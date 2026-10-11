@@ -6,6 +6,7 @@ const createMetaRouter = require("./meta-routes");
 const createRubricRouter = require("./routes/rubric-routes");
 const createCvmLookupRouter = require("./routes/cvm-lookup-routes");
 const createSectionWeightRouter = require("./routes/section-weight-routes");
+const createGradeHaircutRouter = require("./routes/grade-haircut-routes");
 const { HttpError } = createCvmRouter;
 
 const DATABASE_URL = process.env.DATABASE_URL;
@@ -30,6 +31,7 @@ app.use("/api/admin/cvm", createCvmRouter(pool));
 app.use("/api/meta/forms", createMetaRouter(pool));
 app.use("/api/admin/rubric", createRubricRouter(pool));
 app.use("/api/admin/section-weights", createSectionWeightRouter(pool));
+app.use("/api/admin/grade-haircuts", createGradeHaircutRouter(pool));
 app.use("/api/cvm", createCvmLookupRouter(pool));
 
 app.use("/api", (req, res) => {

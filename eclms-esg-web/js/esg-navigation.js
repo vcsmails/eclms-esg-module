@@ -25,7 +25,8 @@ const NAV_ITEMS = {
   VEHICLE: "nav-asmt-veh",
   ADMIN_CVM: "nav-admin-cvm",
   ADMIN_RUBRIC: "nav-admin-rubric",
-  ADMIN_SECTION_WEIGHTS: "nav-admin-section-weights"
+  ADMIN_SECTION_WEIGHTS: "nav-admin-section-weights",
+  ADMIN_GRADE_HAIRCUTS: "nav-admin-grade-haircuts"
 };
 
 // Project-wide grid pagination standard.
@@ -1271,7 +1272,7 @@ function toggleAdminMenu(expanded) {
 }
 
 function navigateMenu(key) {
-  const isAdminView = key === "ADMIN_CVM" || key === "ADMIN_RUBRIC" || key === "ADMIN_SECTION_WEIGHTS";
+  const isAdminView = key === "ADMIN_CVM" || key === "ADMIN_RUBRIC" || key === "ADMIN_SECTION_WEIGHTS" || key === "ADMIN_GRADE_HAIRCUTS";
   if (!isAdminView) currentCategoryScope = key === "SEARCH" ? "ALL" : key;
   if (!$("view-mfg-form").hidden) {
     closeMfgFormToSearch();
@@ -1290,15 +1291,18 @@ function navigateMenu(key) {
     $("view-admin-cvm").hidden = key !== "ADMIN_CVM";
     $("view-admin-rubric").hidden = key !== "ADMIN_RUBRIC";
     $("view-admin-section-weights").hidden = key !== "ADMIN_SECTION_WEIGHTS";
+    $("view-admin-grade-haircuts").hidden = key !== "ADMIN_GRADE_HAIRCUTS";
     setActiveNav(key);
     if (key === "ADMIN_CVM") showAdminCvmView();
     else if (key === "ADMIN_RUBRIC") showAdminRubricView();
-    else showAdminSectionWeightsView();
+    else if (key === "ADMIN_SECTION_WEIGHTS") showAdminSectionWeightsView();
+    else showAdminGradeHaircutsView();
     return;
   }
   $("view-admin-cvm").hidden = true;
   $("view-admin-rubric").hidden = true;
   $("view-admin-section-weights").hidden = true;
+  $("view-admin-grade-haircuts").hidden = true;
   $("view-search").hidden = false;
   $("filter-asset-type").value = "ALL";
   $("header-assessment-title").textContent = SCOPE_TITLES[currentCategoryScope];

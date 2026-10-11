@@ -46,6 +46,9 @@
           <li class="nav-item nav-child" id="nav-admin-section-weights" tabindex="0" role="button" onclick="navigateMenu('ADMIN_SECTION_WEIGHTS')" onkeydown="if (event.key === 'Enter') navigateMenu('ADMIN_SECTION_WEIGHTS')">
             ESG Section Weights
           </li>
+          <li class="nav-item nav-child" id="nav-admin-grade-haircuts" tabindex="0" role="button" onclick="navigateMenu('ADMIN_GRADE_HAIRCUTS')" onkeydown="if (event.key === 'Enter') navigateMenu('ADMIN_GRADE_HAIRCUTS')">
+            ESG Grade &amp; Haircuts
+          </li>
         </ul>
       </li>
     </ul>
@@ -1951,6 +1954,7 @@
             </div>
             <div class="d-flex gap-2">
               <button id="btnManageSectionWeights" type="button" class="btn btn-light btn-sm" onclick="navigateMenu('ADMIN_SECTION_WEIGHTS')">Manage Section Weights</button>
+              <button id="btnManageGradeHaircuts" type="button" class="btn btn-light btn-sm" onclick="navigateMenu('ADMIN_GRADE_HAIRCUTS')">Manage Grade Matrix</button>
             </div>
           </div>
           <div class="card-body">
@@ -2024,6 +2028,10 @@
                 <label class="form-label small fw-bold" for="filter-section-coll-type">Collateral Type</label>
                 <select id="filter-section-coll-type" class="form-select form-select-sm" aria-label="Filter by collateral type" onchange="sectionWeightsOnCollTypeChange()"></select>
               </div>
+              <div class="col-md-8 d-flex justify-content-end gap-2">
+                <button id="btnEditSectionWeights" type="button" class="btn btn-primary btn-sm" onclick="sectionWeightsStartEdit()" disabled><svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M10.5 3.5l2 2M3 13l.8-3 6.7-6.7 2.2 2.2-6.7 6.7z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg> Edit</button>
+                <button id="btnCancelSectionWeights" type="button" class="btn btn-secondary btn-sm" hidden onclick="sectionWeightsCancelEdit()">Cancel</button>
+              </div>
             </div>
             <div id="section-weight-total" class="alert alert-secondary py-2 mb-3" role="status" aria-live="polite"></div>
             <div class="table-responsive">
@@ -2042,6 +2050,58 @@
             <div class="grid-pager" id="section-weight-pager"></div>
             <div class="d-flex justify-content-end mt-3">
               <button id="btnSaveSectionWeights" type="button" class="btn btn-primary btn-sm" disabled onclick="sectionWeightsSave()">Save Section Weights</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="view-admin-grade-haircuts" class="admin-screen" aria-label="ESG Grade and Haircuts" hidden>
+        <nav aria-label="Breadcrumb" class="admin-breadcrumb mb-2">
+          <ol>
+            <li><a href="#" onclick="navigateMenu('ADMIN_CVM'); return false;">Administration</a></li>
+            <li><a href="#" onclick="navigateMenu('ADMIN_RUBRIC'); return false;">ESG Scoring Model</a></li>
+            <li aria-current="page">ESG Grade &amp; Haircuts</li>
+          </ol>
+        </nav>
+        <div class="card shadow-sm border-0 mb-4">
+          <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">ESG Grade &amp; Haircuts</h5>
+          </div>
+          <div class="card-body">
+            <div class="row g-2 align-items-end mb-3">
+              <div class="col-md-3 d-flex gap-2">
+                <button id="btnGradeHaircutBack" type="button" class="btn btn-primary btn-sm" onclick="navigateMenu('ADMIN_RUBRIC')" aria-label="Back to ESG Scoring Model">&larr; Back</button>
+              </div>
+              <div class="col-md-5">
+                <label class="form-label small fw-bold" for="filter-grade-coll-type">Collateral Type</label>
+                <select id="filter-grade-coll-type" class="form-select form-select-sm" aria-label="Filter by collateral type" onchange="gradeHaircutOnCollTypeChange()"></select>
+              </div>
+              <div class="col-md-4 d-flex justify-content-end gap-2">
+                <button id="btnEditGradeHaircuts" type="button" class="btn btn-primary btn-sm d-inline-flex align-items-center gap-2" onclick="gradeHaircutStartEdit()">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                  Edit
+                </button>
+                <button id="btnCancelGradeHaircuts" type="button" class="btn btn-outline-secondary btn-sm" hidden onclick="gradeHaircutCancelEdit()">Cancel</button>
+              </div>
+            </div>
+            <div id="grade-haircut-range" class="alert alert-success py-2 mb-3" role="status">Range: 0.00 - 100.00 (Continuous & Balanced)</div>
+            <div class="table-responsive">
+              <table class="table table-sm align-middle mb-0">
+                <thead>
+                  <tr>
+                    <th>ESG Grade</th>
+                    <th>Risk Category</th>
+                    <th>Min Score</th>
+                    <th>Max Score</th>
+                    <th>Haircut %</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="tbl-grade-haircut-rows"></tbody>
+              </table>
+            </div>
+            <div class="d-flex justify-content-end mt-3">
+              <button id="btnSaveGradeHaircuts" type="button" class="btn btn-primary btn-sm" disabled onclick="gradeHaircutSave()">Save Changes</button>
             </div>
           </div>
         </div>
@@ -2071,5 +2131,6 @@
   <script src="js/admin/cvm-service.js"></script>
   <script src="js/admin/rubric-service.js"></script>
   <script src="js/admin/section-weight-service.js"></script>
+  <script src="js/admin/grade-haircut-service.js"></script>
 </body>
 </html>

@@ -1,5 +1,5 @@
 // ESG Scoring Model Maintenance under Administration. Manages esg_attr_score_rubric through /api/admin/rubric.
-// Base Score is edited inline in the grid, so there is no drawer. Shared helpers (fetch and errors) come from
+// Base Score is edited per row (Edit, then Save or Cancel), so there is no drawer. Shared helpers (fetch and errors) come from
 // cvm-service.js, which loads first. Collateral types come from GET /api/cvm/values?category=COLL_TYPE.
 
 const RUBRIC_API_BASE = "/api/admin/rubric";
@@ -18,6 +18,9 @@ let rubricFilterTimer = null;
 let rubricCollTypeRows = [];
 let rubricCollTypeNames = new Map();
 let rubricCollTypeLoad = null;
+let rubricRows = [];
+let rubricEditingId = null;
+let rubricSaving = false;
 
 const rubricService = {
   list(params) {
@@ -101,76 +104,143 @@ function rubricCell(text, className = "") {
   return td;
 }
 
-// Saves on blur or Enter. Invalid input is reverted without a request, and a failed save restores the last saved value.
-async function rubricSaveBaseScore(input, row) {
-  const text = input.value.trim();
-  const saved = input.dataset.savedValue;
-  if (!RUBRIC_SCORE_RE.test(text) || Number(text) > RUBRIC_SCORE_MAX) {
-    input.value = saved;
-    showToast("Base Score must be a number from 0 to 100 with at most 2 decimals.");
-    return;
-  }
-  if (Number(text) === Number(saved)) return;
-  input.disabled = true;
-  try {
-    const updated = await rubricService.update(row.rubric_id, { base_score: text });
-    row.base_score = updated.base_score;
-    input.dataset.savedValue = String(updated.base_score);
-    input.value = updated.base_score;
-    showToast("Base Score saved.");
-  } catch (err) {
-    input.value = saved;
-    showToast(cvmErrorText(err, "Unable to save Base Score."));
-  } finally {
-    input.disabled = false;
-  }
+// Inline SVG paths for the row action icons. The page loads no icon font, so the icons are drawn here.
+const RUBRIC_ICON_PATHS = {
+  edit: '<path d="M10.5 3.5l2 2M3 13l.8-3 6.7-6.7 2.2 2.2-6.7 6.7z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>',
+  deactivate: '<circle cx="8" cy="8" r="5.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M4.2 4.2l7.6 7.6" stroke="currentColor" stroke-width="1.6"/>',
+  activate: '<path d="M3 8.5l3 3 7-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',
+  save: '<path d="M3 8.5l3 3 7-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',
+  cancel: '<path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'
+};
+
+function rubricIconButton(kind, title, onClick) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = `rubric-icon-btn rubric-icon-${kind}`;
+  button.title = title;
+  button.setAttribute("aria-label", title);
+  button.innerHTML = `<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">${RUBRIC_ICON_PATHS[kind]}</svg>`;
+  button.addEventListener("click", onClick);
+  return button;
+}
+
+// Read-only scores show as XX.00. A blank score stays blank.
+function rubricFormatScore(value) {
+  return value === null || value === undefined || value === "" ? "" : Number(value).toFixed(2);
 }
 
 function rubricBuildScoreInput(row) {
   const input = document.createElement("input");
   input.type = "number";
-  input.className = "form-control grid-number-input";
+  input.className = "form-control grid-number-input rubric-score-input";
   input.min = "0";
   input.max = String(RUBRIC_SCORE_MAX);
   input.step = "0.01";
   input.value = row.base_score ?? "";
-  input.dataset.savedValue = String(row.base_score ?? "");
   input.setAttribute("aria-label", `Base Score for ${row.attr_code}`);
   input.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
       event.preventDefault();
-      input.blur();
+      rubricSaveScore(row);
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      rubricCancelEdit();
     }
   });
-  input.addEventListener("blur", () => rubricSaveBaseScore(input, row));
+  input.addEventListener("blur", () => {
+    const text = input.value.trim();
+    if (RUBRIC_SCORE_RE.test(text) && Number(text) <= RUBRIC_SCORE_MAX) input.value = Number(text).toFixed(2);
+  });
   return input;
 }
 
-// Deactivate and activate use the same PUT as the inline score, with only the status changed.
-async function rubricToggleStatus(row, button) {
-  const nextStatus = row.status === "ACTIVE" ? "INACTIVE" : "ACTIVE";
-  button.disabled = true;
+function rubricEditInput() {
+  return $("tbl-rubric-rows").querySelector(".rubric-score-input");
+}
+
+function rubricStartEdit(row) {
+  if (rubricSaving || rubricEditingId) return;
+  rubricEditingId = row.rubric_id;
+  rubricRenderRows(rubricRows);
+  rubricEditInput()?.select();
+}
+
+// Cancel keeps the stored score, because the row is only changed after a successful save.
+function rubricCancelEdit() {
+  if (rubricSaving) return;
+  rubricEditingId = null;
+  rubricRenderRows(rubricRows);
+}
+
+// Invalid input keeps the row in edit mode. A failed save keeps the typed value so the user can retry or cancel.
+async function rubricSaveScore(row) {
+  if (rubricSaving) return;
+  const input = rubricEditInput();
+  const text = input.value.trim();
+  if (!RUBRIC_SCORE_RE.test(text) || Number(text) > RUBRIC_SCORE_MAX) {
+    showToast("Base Score must be a number from 0 to 100 with at most 2 decimals.");
+    input.focus();
+    return;
+  }
+  if (row.base_score !== null && row.base_score !== undefined && Number(text) === Number(row.base_score)) {
+    rubricCancelEdit();
+    return;
+  }
+  rubricSaving = true;
+  input.disabled = true;
   try {
-    await rubricService.update(row.rubric_id, { status: nextStatus });
-    showToast(nextStatus === "ACTIVE" ? "Rubric rule activated." : "Rubric rule deactivated.");
-    await loadRubricList({ keepPage: true });
+    const updated = await rubricService.update(row.rubric_id, { base_score: text });
+    row.base_score = updated.base_score;
+    rubricEditingId = null;
+    rubricSaving = false;
+    rubricRenderRows(rubricRows);
+    showToast("Base Score saved.");
   } catch (err) {
-    button.disabled = false;
-    showToast(cvmErrorText(err, "Unable to change rule status."));
+    rubricSaving = false;
+    input.disabled = false;
+    input.focus();
+    showToast(cvmErrorText(err, "Unable to save Base Score."));
   }
 }
 
-function rubricBuildActionButton(row) {
-  const activate = row.status !== "ACTIVE";
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = activate ? "btn btn-outline-success btn-sm" : "btn btn-outline-danger btn-sm";
-  button.textContent = activate ? "Activate" : "Deactivate";
-  button.addEventListener("click", () => rubricToggleStatus(row, button));
-  return button;
+// Deactivate and activate use the same PUT as the score, with only the status changed.
+async function rubricToggleStatus(row) {
+  if (rubricSaving || rubricEditingId) return;
+  const nextStatus = row.status === "ACTIVE" ? "INACTIVE" : "ACTIVE";
+  let succeeded = false;
+  rubricSaving = true;
+  try {
+    await rubricService.update(row.rubric_id, { status: nextStatus });
+    succeeded = true;
+    showToast(nextStatus === "ACTIVE" ? "Rubric rule activated." : "Rubric rule deactivated.");
+  } catch (err) {
+    showToast(cvmErrorText(err, "Unable to change rule status."));
+  } finally {
+    rubricSaving = false;
+  }
+  if (succeeded) await loadRubricList({ keepPage: true });
+}
+
+// While one row is in edit mode, the other rows' actions are locked so no edit is lost.
+function rubricBuildActions(row, isEditing, locked) {
+  if (isEditing) {
+    return [
+      rubricIconButton("save", "Save", () => rubricSaveScore(row)),
+      rubricIconButton("cancel", "Cancel", rubricCancelEdit)
+    ];
+  }
+  const edit = rubricIconButton("edit", "Edit Score", () => rubricStartEdit(row));
+  const toggle = row.status === "ACTIVE"
+    ? rubricIconButton("deactivate", "Deactivate Rule", () => rubricToggleStatus(row))
+    : rubricIconButton("activate", "Activate Rule", () => rubricToggleStatus(row));
+  edit.disabled = locked;
+  toggle.disabled = locked;
+  return [edit, toggle];
 }
 
 function rubricRenderRows(rows) {
+  rubricRows = rows;
+  if (rubricEditingId && !rows.some((row) => row.rubric_id === rubricEditingId)) rubricEditingId = null;
   if (!rows.length) {
     rubricSetRowMessage("No rubric rules match the current filters.");
     return;
@@ -178,12 +248,18 @@ function rubricRenderRows(rows) {
   const tbody = $("tbl-rubric-rows");
   tbody.replaceChildren();
   rows.forEach((row) => {
+    const isEditing = row.rubric_id === rubricEditingId;
+    const locked = rubricEditingId !== null && !isEditing;
     const tr = document.createElement("tr");
     const actionCell = document.createElement("td");
     actionCell.className = "text-center rubric-col-actions";
-    actionCell.append(rubricBuildActionButton(row));
+    actionCell.append(...rubricBuildActions(row, isEditing, locked));
     const scoreCell = document.createElement("td");
-    scoreCell.append(rubricBuildScoreInput(row));
+    if (isEditing) {
+      scoreCell.append(rubricBuildScoreInput(row));
+    } else {
+      scoreCell.textContent = rubricFormatScore(row.base_score);
+    }
     tr.append(
       actionCell,
       rubricCell(rubricCollLabel(row.coll_type)),

@@ -543,6 +543,21 @@ h1 { margin-bottom: 4px; color: var(--primary-navy); font-size: 21px; font-weigh
 .admin-screen .table .rubric-col-actions { position: sticky; left: 0; z-index: 1; background: #ffffff; white-space: nowrap; }
 .admin-screen .table thead .rubric-col-actions { z-index: 2; background: var(--light-blue-bg); }
 .admin-screen .table-hover tbody tr:hover .rubric-col-actions { background: #f5f9ff; }
+.admin-screen .rubric-icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; margin: 0 2px; padding: 0; border: 1px solid; border-radius: 4px; background: #ffffff; cursor: pointer; vertical-align: middle; }
+.admin-screen .rubric-icon-btn:hover:not(:disabled) { background: #f5f8fc; }
+.admin-screen .rubric-icon-btn:disabled { opacity: .5; cursor: not-allowed; }
+.admin-screen .admin-breadcrumb ol { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; font-size: 13px; color: #6c757d; }
+.admin-screen .admin-breadcrumb li + li::before { content: "/"; margin-right: 6px; color: #adb5bd; }
+.admin-screen .admin-breadcrumb a { color: var(--primary-blue, #1a56a6); text-decoration: none; }
+.admin-screen .admin-breadcrumb a:hover { text-decoration: underline; }
+.admin-screen .admin-breadcrumb [aria-current="page"] { color: #343a40; font-weight: 700; }
+.admin-screen .grade-pill { display: inline-block; min-width: 44px; padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: 700; text-align: center; color: #ffffff; }
+.admin-screen .rubric-icon-edit { color: var(--primary-blue); border-color: var(--border-blue); }
+.admin-screen .rubric-icon-deactivate { color: #a71d2a; border-color: #dc3545; }
+.admin-screen .rubric-icon-deactivate:hover:not(:disabled) { background: #fdecee; }
+.admin-screen .rubric-icon-activate, .admin-screen .rubric-icon-save { color: #1e7b3a; border-color: #28a745; }
+.admin-screen .rubric-icon-activate:hover:not(:disabled), .admin-screen .rubric-icon-save:hover:not(:disabled) { background: #e8f7ee; }
+.admin-screen .rubric-icon-cancel { color: #6c757d; border-color: #adb5bd; }
 .admin-screen .table .grid-number-input {
   height: 32px;
   min-height: 32px;
