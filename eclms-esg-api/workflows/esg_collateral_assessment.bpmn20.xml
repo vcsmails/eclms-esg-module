@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:flowable="http://flowable.org/bpmn"
+             xsi:schemaLocation="http://www.omg.org/spec/BPMN/20100524/MODEL
+                                 http://www.omg.org/spec/BPMN/20100524/BPMN20.xsd"
+             targetNamespace="http://flowable.org/test"
+             elementFormDefault="qualified">
+
+  <process id="proc_esg_collateral_assessment" name="ESG Collateral Assessment" isExecutable="true">
+    
+    <startEvent id="startAssessment" name="Start Assessment"/>
+    
+    <sequenceFlow id="flow1" sourceRef="startAssessment" targetRef="serviceDmnEval"/>
+    
+    <serviceTask id="serviceDmnEval" name="Evaluate ESG Grade Decision"
+                 flowable:type="dmn"
+                 flowable:decisionTableReferenceKey="decision_esg_grade_haircut">
+      <extensionElements>
+        <flowable:mapExceptionToCode>GRADE_EVAL_ERROR</flowable:mapExceptionToCode>
+      </extensionElements>
+    </serviceTask>
+    
+    <sequenceFlow id="flow2" sourceRef="serviceDmnEval" targetRef="gatewayCheckerRouting"/>
+    
+    <exclusiveGateway id="gatewayCheckerRouting" name="Route to Checker?"/>
+    
+    <sequenceFlow id="flow3_checker" sourceRef="gatewayCheckerRouting" targetRef="taskCheckerReview"
+                  name="Needs Review">
+      <conditionExpression xsi:type="tFormalExpression">
+        <![CDATA[${haircutPct > 10.0 || riskCategory == 'CRITICAL_RISK'}]]>
+      </conditionExpression>
+    </sequenceFlow>
+    
+    <sequenceFlow id="flow3_direct" sourceRef="gatewayCheckerRouting" targetRef="endAssessment"
+                  name="Direct to End"/>
+    
+    <userTask id="taskCheckerReview" name="Risk Checker Review"
+              flowable:candidateGroups="RISK_CHECKERS">
+      <documentation>Review high-haircut or critical-risk collaterals for approval.</documentation>
+    </userTask>
+    
+    <sequenceFlow id="flow4" sourceRef="taskCheckerReview" targetRef="endAssessment"/>
+    
+    <endEvent id="endAssessment" name="End Assessment"/>
+    
+  </process>
+
+</definitions>

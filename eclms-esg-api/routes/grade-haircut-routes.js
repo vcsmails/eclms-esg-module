@@ -1,5 +1,6 @@
 const express = require("express");
 const { HttpError } = require("../cvm-routes");
+const { syncGradeHaircutMatrixToFlowable } = require("../services/dmn-builder.service");
 
 const COLL_TYPE_MSTR = "COLL_TYPE";
 const DEFAULT_COLL_TYPE = "PROP";
@@ -143,6 +144,11 @@ module.exports = function createGradeHaircutRouter(pool) {
       }
       await client.query("COMMIT");
       res.json({ updated: updates.size });
+
+      // Async DMN sync after DB commit. Errors are logged but don't fail the API response.
+      syncGradeHaircutMatrixToFlowable(pool).catch((err) => {
+        console.error(`Scheduled DMN sync failed (ignoring): ${err.message}`);
+      });
     } catch (err) {
       await client.query("ROLLBACK");
       throw err;
