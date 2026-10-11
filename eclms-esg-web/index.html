@@ -1,0 +1,2075 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ECLMS 2.0 - Collateral Sustainability Assessment</title>
+  <link rel="stylesheet" href="css/btc-theme.css">
+  <link rel="stylesheet" href="vendor/tom-select/tom-select.default.min.css">
+  <link rel="stylesheet" href="css/esg-layout.css">
+</head>
+<body>
+
+  <aside class="sidebar" aria-label="Module navigation">
+    <div class="brand-header">
+      <div class="brand-logo-icon" aria-hidden="true">E</div>
+      <div class="brand-copy"><strong>ECLMS-ESG</strong><small>Sustainability Assessment</small></div>
+    </div>
+
+    <div class="nav-section-title">Workflow Navigation</div>
+    <ul class="nav-menu">
+      <li class="nav-item active" id="nav-coll-search" tabindex="0" role="button" onclick="navigateMenu('SEARCH')" onkeydown="if (event.key === 'Enter') navigateMenu('SEARCH')">
+        <span class="nav-item-icon" aria-hidden="true">🔍</span> Collateral Search
+      </li>
+      <li class="nav-item" id="nav-asmt-prop" tabindex="0" role="button" onclick="navigateMenu('PROPERTY')" onkeydown="if (event.key === 'Enter') navigateMenu('PROPERTY')">
+        <span class="nav-item-icon" aria-hidden="true">🏢</span> Property Assessment
+      </li>
+      <li class="nav-item" id="nav-asmt-mfg" tabindex="0" role="button" onclick="navigateMenu('MANUFACTURING')" onkeydown="if (event.key === 'Enter') navigateMenu('MANUFACTURING')">
+        <span class="nav-item-icon" aria-hidden="true">🏭</span> Manu. Assessment
+      </li>
+      <li class="nav-item" id="nav-asmt-veh" tabindex="0" role="button" onclick="navigateMenu('VEHICLE')" onkeydown="if (event.key === 'Enter') navigateMenu('VEHICLE')">
+        <span class="nav-item-icon" aria-hidden="true">🚛</span> Vehicle Assessment
+      </li>
+      <div class="nav-section-title">System</div>
+      <li class="nav-group">
+        <div class="nav-item nav-parent" id="nav-admin" tabindex="0" role="button" aria-expanded="true" aria-controls="nav-admin-children" onclick="toggleAdminMenu()" onkeydown="if (event.key === 'Enter') toggleAdminMenu()">
+          <span class="nav-item-icon" aria-hidden="true">⚙️</span> Administration
+          <span class="nav-caret" aria-hidden="true">▾</span>
+        </div>
+        <ul class="nav-submenu" id="nav-admin-children">
+          <li class="nav-item nav-child" id="nav-admin-cvm" tabindex="0" role="button" onclick="navigateMenu('ADMIN_CVM')" onkeydown="if (event.key === 'Enter') navigateMenu('ADMIN_CVM')">
+            CVM Maintenance
+          </li>
+          <li class="nav-item nav-child" id="nav-admin-rubric" tabindex="0" role="button" onclick="navigateMenu('ADMIN_RUBRIC')" onkeydown="if (event.key === 'Enter') navigateMenu('ADMIN_RUBRIC')">
+            ESG Scoring Model
+          </li>
+          <li class="nav-item nav-child" id="nav-admin-section-weights" tabindex="0" role="button" onclick="navigateMenu('ADMIN_SECTION_WEIGHTS')" onkeydown="if (event.key === 'Enter') navigateMenu('ADMIN_SECTION_WEIGHTS')">
+            ESG Section Weights
+          </li>
+        </ul>
+      </li>
+    </ul>
+
+    <div class="user-footer">
+      <div class="user-avatar" aria-hidden="true">M</div>
+      <div><strong>System Maker</strong><small>Auth Model: MA_CH</small></div>
+    </div>
+  </aside>
+
+  <main class="main-workspace">
+    <header class="top-bar">
+      <div class="top-heading" id="header-assessment-title">Global Collateral Master Register</div>
+      <div class="top-actions" id="top-bar-actions" hidden>
+        <span class="draft-status" id="draft-status" role="status" aria-live="polite"></span>
+        <button class="btn btn-secondary" type="button" onclick="saveActiveSectionDraft()">Save Draft</button>
+        <button class="btn btn-primary" type="button" onclick="validateAndProceed()">Validate &amp; Proceed</button>
+      </div>
+    </header>
+
+    <div class="content-area">
+
+      <!-- VIEW 1: Collateral search and master register (sec-search) -->
+      <section id="view-search" aria-label="Collateral master search">
+        <div class="card">
+          <div class="card-header">
+            <span id="search-card-title">Collateral Master Search</span>
+            <span class="field-hint">Filtered by active collateral category context</span>
+          </div>
+          <div class="card-body">
+            <div class="search-bar">
+              <div class="form-group">
+                <label class="form-label" for="coll-live-search">Search Collateral</label>
+                <input type="search" class="form-control fld-optional" id="coll-live-search" placeholder="Type ID or Name (e.g. MUM-8921)...">
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="filter-asset-type">Asset Classification</label>
+                <select class="form-control fld-optional" id="filter-asset-type" onchange="applyInstantGridFilter()">
+                  <option value="ALL">All Classifications</option>
+                  <option value="COMMERCIAL_OFFICE">Commercial Office Complex</option>
+                  <option value="RESIDENTIAL">Residential Apartment / House</option>
+                  <option value="INDUSTRIAL">Industrial Building / Factory</option>
+                  <option value="WAREHOUSE">Warehouse / Logistics Park</option>
+                  <option value="MANUFACTURING_HEAVY">Metals &amp; Heavy Materials Plant</option>
+                  <option value="COMMERCIAL_VEHICLE">Commercial Fleet - LCV Trucks</option>
+                </select>
+              </div>
+              <button class="btn btn-secondary" type="button" onclick="resetLiveFilters()">Clear</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card section-gap">
+          <div class="card-header">
+            <span>Collateral Master Register</span>
+            <span class="field-hint" id="grid-status-count" aria-live="polite">Loading...</span>
+          </div>
+          <div class="card-body no-pad table-scroll">
+            <table class="data-table" id="collateral-master-table">
+              <thead>
+                <tr>
+                  <th class="col-action">Action</th>
+                  <th>Collateral Reference ID</th>
+                  <th>Property Name</th>
+                  <th>Classification</th>
+                  <th>Location</th>
+                  <th>Appraised Value</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="collateral-grid-body"></tbody>
+            </table>
+          </div>
+          <div class="grid-pager grid-pager--card" id="coll-pager"></div>
+        </div>
+      </section>
+
+      <!-- VIEW 2: Multi-tab collateral form (template FRM_PROP) -->
+      <section id="view-assessment-form" hidden>
+
+        <div class="card banner-card">
+          <div class="card-body banner-body">
+            <div>
+              <strong class="banner-name" id="banner-prop-name"></strong>
+              <span class="breadcrumb-tag" id="banner-coll-id"></span>
+              <span class="breadcrumb-tag tag-info" id="banner-template-code">TEMPLATE: FRM_PROP</span>
+            </div>
+            <button class="btn btn-secondary btn-sm" type="button" onclick="closeFormToSearch()">← Back to Search</button>
+          </div>
+        </div>
+
+        <div class="form-tab-nav" role="tablist" aria-label="Assessment sections">
+          <button class="form-tab-btn active" role="tab" aria-selected="true" data-tab="tab-loc" type="button" onclick="handleTabSwitch('tab-loc', this)">1. Context &amp; Localization</button>
+          <button class="form-tab-btn" role="tab" aria-selected="false" data-tab="tab-env" type="button" onclick="handleTabSwitch('tab-env', this)">2. Environmental Baseline</button>
+          <button class="form-tab-btn" role="tab" aria-selected="false" data-tab="tab-cli" type="button" onclick="handleTabSwitch('tab-cli', this)">3. Physical Climate Risk</button>
+          <button class="form-tab-btn" role="tab" aria-selected="false" data-tab="tab-res" type="button" onclick="handleTabSwitch('tab-res', this)">4. Resilience &amp; Insurance</button>
+          <button class="form-tab-btn" role="tab" aria-selected="false" data-tab="tab-cso" type="button" onclick="handleTabSwitch('tab-cso', this)">5. Compliance &amp; Social</button>
+          <button class="form-tab-btn" role="tab" aria-selected="false" data-tab="prop-tab-sec-6" type="button" onclick="handleTabSwitch('prop-tab-sec-6', this)">6. ESG Assessment Summary</button>
+          <button class="form-tab-btn" role="tab" aria-selected="false" data-tab="tab-ledger" type="button" onclick="handleTabSwitch('tab-ledger', this)">Observation Ledger</button>
+        </div>
+
+        <!-- TAB 1: Localization (PRPLOC / sec-context) -->
+        <div id="tab-loc" class="tab-panel active tab-body" role="tabpanel">
+          <div class="card">
+            <div class="card-header">
+              <span>Section 1: Property Context &amp; Localization (PRPLOC)</span>
+              <span><span class="pill-badge pill-grey" id="s1-signoff-status">Not signed off</span> <span class="breadcrumb-tag">tab_sec_code: PCT</span></span>
+            </div>
+            <div class="card-body">
+              <div class="form-grid-6">
+
+                <div class="form-group col-span-3">
+                  <label class="form-label" for="pct-asmt-id">Assessment ID</label>
+                  <input type="text" class="form-control fld-derived" id="pct-asmt-id" name="ASSESSMENT_ID" value="" readonly>
+                </div>
+                <div class="form-group col-span-3">
+                  <label class="form-label" for="pct-coll-id">Collateral ID</label>
+                  <input type="text" class="form-control fld-derived" id="pct-coll-id" name="COLLATERAL_ID" value="" readonly>
+                </div>
+                <div class="form-group col-span-3">
+                  <label class="form-label" for="pct-version">Assessment Version</label>
+                  <input type="text" class="form-control fld-derived" id="pct-version" name="ASSESSMENT_VERSION" value="Ver 1 (Current)" readonly>
+                </div>
+                <div class="form-group col-span-3">
+                  <label class="form-label" for="fld-asmt-type">Assessment Type <span class="req-star" title="Required" aria-hidden="true">*</span></label>
+                  <select class="form-control fld-required mark-dirty" id="fld-asmt-type" name="ASSESSMENT_TYPE">
+                    <option value="" selected disabled>-- Select Option --</option>
+                    <option value="INITIAL">Initial Collateral Onboarding</option>
+                    <option value="PERIODIC">Periodic Annual Review</option>
+                    <option value="TRIGGER_BASED">Trigger-Based Event Review</option>
+                  </select>
+                </div>
+                <div class="form-group col-span-3">
+                  <label class="form-label" for="pct-date">Assessment Date</label>
+                  <input type="text" class="form-control fld-derived" id="pct-date" name="ASSESSMENT_DATE" value="2026-10-10" readonly>
+                </div>
+                <div class="form-group col-span-3">
+                  <label class="form-label" for="pct-status">Assessment Status</label>
+                  <input type="text" class="form-control fld-derived" id="pct-status" name="ASSESSMENT_STATUS" value="DRAFT (Under Preparation)" readonly>
+                </div>
+                <div class="form-group col-span-3">
+                  <label class="form-label" for="pct-fresh">Data Freshness</label>
+                  <input type="text" class="form-control fld-derived" id="pct-fresh" name="DATA_FRESHNESS_STATUS" value="CURRENT" readonly>
+                </div>
+                <div class="form-group col-span-3">
+                  <label class="form-label" for="pct-review">Annual Review Due</label>
+                  <input type="text" class="form-control fld-derived" id="pct-review" name="NEXT_REVIEW_DATE" value="2027-10-10" readonly>
+                </div>
+
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="fld-usage">Property Broad Usage <span class="req-star" title="Required" aria-hidden="true">*</span></label>
+                  <select class="form-control fld-required mark-dirty" id="fld-usage" name="PROP_TYPE_USAGE">
+                    <option value="" selected disabled>-- Select Option --</option>
+                    <option value="COMMERCIAL_OFFICE">Commercial Office Complex</option>
+                    <option value="RESIDENTIAL">Residential Apartment / House</option>
+                    <option value="INDUSTRIAL">Industrial Building / Factory</option>
+                    <option value="WAREHOUSE">Warehouse / Logistics Park</option>
+                  </select>
+                </div>
+
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="fld-operating">Operating Status <span class="req-star" title="Required" aria-hidden="true">*</span></label>
+                  <select class="form-control fld-required mark-dirty" id="fld-operating" name="OPERATING_STATUS">
+                    <option value="" selected disabled>-- Select Option --</option>
+                    <option value="OCCUPIED">Fully Occupied / Operational</option>
+                    <option value="PARTIALLY_OCCUPIED">Partially Occupied</option>
+                    <option value="UNDER_CONSTRUCTION">Under Construction</option>
+                    <option value="VACANT">Vacant</option>
+                  </select>
+                </div>
+
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="fld-age">Property Age (Years)</label>
+                  <input type="text" class="form-control fld-derived" id="fld-age" name="PROPERTY_AGE_YRS" value="6" readonly>
+                </div>
+
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="fld-lat">Latitude Coordinate <span class="req-star" title="Required" aria-hidden="true">*</span></label>
+                  <input type="text" inputmode="decimal" class="form-control fld-required mark-dirty" id="fld-lat" name="LATITUDE" placeholder="e.g. 19.0760900">
+                  <span class="field-hint" id="lat-validation-msg">Decimal coordinate: -90.0 to +90.0</span>
+                </div>
+
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="fld-lon">Longitude Coordinate <span class="req-star" title="Required" aria-hidden="true">*</span></label>
+                  <input type="text" inputmode="decimal" class="form-control fld-required mark-dirty" id="fld-lon" name="LONGITUDE" placeholder="e.g. 72.8774260">
+                  <span class="field-hint" id="lon-validation-msg">Decimal coordinate: -180.0 to +180.0</span>
+                </div>
+
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="fld-city">City / District</label>
+                  <input type="text" class="form-control fld-optional mark-dirty" id="fld-city" name="CITY_DISTRICT">
+                </div>
+
+                <div class="form-group col-span-6">
+                  <label class="form-label" for="fld-coastal">Coastal Zone Location</label>
+                  <input type="text" class="form-control fld-derived" id="fld-coastal" name="IS_COASTAL_ZONE" value="Y (Within CRZ Buffer - GIS Derived)" readonly>
+                  <span class="field-hint">Automated GIS spatial determination</span>
+                </div>
+
+                <div class="form-group col-span-6">
+                  <label class="form-label" for="fld-builtup">Built-up Area (SqFt) <span class="req-star" title="Required" aria-hidden="true">*</span></label>
+                  <input type="text" inputmode="decimal" class="form-control fld-required mark-dirty" id="fld-builtup" name="BUILTUP_AREA_SQFT">
+                </div>
+
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section 2: Property Environmental Baseline (PRPENV) -->
+        <div id="tab-env" class="tab-panel tab-body" role="tabpanel">
+          <div class="card">
+            <div class="card-header">
+              <span>Section 2: Property Environmental Baseline (PRPENV)</span>
+              <span class="breadcrumb-tag">tab_sec_code: ENV</span>
+            </div>
+            <div class="card-body">
+              <div class="form-grid-6">
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="fld-green">Green Building Certified <span class="req-star" title="Required" aria-hidden="true">*</span></label>
+                  <select class="form-control fld-required mark-dirty" id="fld-green" name="GREEN_BLDG_CERT_YN" onchange="toggleCertFields(this.value)">
+                    <option value="" selected disabled>-- Select Option --</option><option value="Y">Yes</option><option value="N">No</option></select>
+                </div>
+
+                <div class="form-group col-span-4 cert-dep">
+                  <label class="form-label" for="fld-cert-agency">Certification Standard Agency</label>
+                  <select class="form-control mark-dirty" id="fld-cert-agency" name="CERT_TYPE_CODE" onchange="syncRatingLevels(this.value)">
+                    <option value="" selected disabled>-- Select Option --</option><option value="LEED">LEED (USGBC)</option><option value="IGBC">IGBC (CII India)</option><option value="GRIHA">GRIHA (TERI)</option><option value="BEE">BEE Energy Star</option></select>
+                </div>
+
+                <div class="form-group col-span-4 cert-dep">
+                  <label class="form-label" for="fld-rating-level">Certification Rating Level</label>
+                  <select class="form-control mark-dirty" id="fld-rating-level" name="CERT_RATING_LEVEL"><option value="PLATINUM" selected>Platinum (Tier 1)</option><option value="GOLD">Gold (Tier 2)</option><option value="SILVER">Silver (Tier 3)</option><option value="CERTIFIED">Certified Baseline</option></select>
+                </div>
+
+                <div class="form-group col-span-4 cert-dep">
+                  <label class="form-label" for="fld-cert-no">Certificate Number</label>
+                  <input type="text" class="form-control fld-optional mark-dirty" id="fld-cert-no" name="CERT_NUMBER" value="LEED-BD-2023-88912">
+                </div>
+
+                <div class="form-group col-span-4 cert-dep">
+                  <label class="form-label" for="fld-cert-to">Certificate Expiration Date</label>
+                  <input type="date" class="form-control fld-optional mark-dirty" id="fld-cert-to" name="CERT_VALID_TO" value="2028-11-30">
+                </div>
+
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="fld-energy">Energy Efficiency Benchmark <span class="req-star" title="Required" aria-hidden="true">*</span></label>
+                  <select class="form-control fld-required mark-dirty" id="fld-energy" name="ENERGY_EFFICIENCY_RATG">
+                    <option value="" selected disabled>-- Select Option --</option><option value="5_STAR">5 Star Benchmark</option><option value="4_STAR">4 Star</option><option value="3_STAR">3 Star</option><option value="NONE">None / Unrated</option></select>
+                </div>
+
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="fld-ren-yn">Captive Renewable Generation <span class="req-star" title="Required" aria-hidden="true">*</span></label>
+                  <select class="form-control fld-required mark-dirty" id="fld-ren-yn" name="RENEWABLE_ENG_YN" data-toggles="ren-dep" data-show-when="Y">
+                    <option value="" selected disabled>-- Select Option --</option><option value="Y">Yes</option><option value="N">No</option></select>
+                </div>
+
+                <div class="form-group col-span-4 ren-dep">
+                  <label class="form-label" for="fld-ren-type">Renewable Technology</label>
+                  <select class="form-control mark-dirty" id="fld-ren-type" name="RENEWABLE_TYPE">
+                    <option value="" selected disabled>-- Select Option --</option><option value="SOLAR_ROOF">Solar Photovoltaic Rooftop</option><option value="SOLAR_GROUND">Solar Ground-Mounted</option><option value="HYBRID">Solar-Wind Hybrid</option></select>
+                </div>
+
+                <div class="form-group col-span-4 ren-dep">
+                  <label class="form-label" for="fld-ren-kw">Installed Renewable Capacity (kW)</label>
+                  <input type="text" class="form-control mark-dirty" id="fld-ren-kw" name="RENEWABLE_CAPACITY_KW" value="250.00">
+                </div>
+
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="fld-rain">Rainwater Harvesting Facility <span class="req-star" title="Required" aria-hidden="true">*</span></label>
+                  <select class="form-control fld-required mark-dirty" id="fld-rain" name="RAINWATER_HARVEST_YN">
+                    <option value="" selected disabled>-- Select Option --</option><option value="Y">Yes (Operational)</option><option value="N">No</option></select>
+                </div>
+
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="fld-stp">On-site Sewage Treatment Plant (STP) <span class="req-star" title="Required" aria-hidden="true">*</span></label>
+                  <select class="form-control fld-required mark-dirty" id="fld-stp" name="WASTEWATER_TREAT_YN">
+                    <option value="" selected disabled>-- Select Option --</option><option value="Y">Yes (Captive STP)</option><option value="N">No (Direct Municipal)</option><option value="X">Not Applicable</option></select>
+                </div>
+
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="fld-water">Water Stress Exposure (Hydrological)</label>
+                  <input type="text" class="form-control fld-derived" id="fld-water" value="HIGH (Regional Aquifer Depleted - GIS Derived)" readonly>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section 3: Physical Climate Hazard &amp; Vulnerability (PRPCLI) -->
+        <div id="tab-cli" class="tab-panel tab-body" role="tabpanel">
+          <div class="card">
+            <div class="card-header">
+              <span>Section 3: Physical Climate Hazard &amp; Vulnerability (PRPCLI)</span>
+              <span class="breadcrumb-tag">tab_sec_code: CLI</span>
+            </div>
+            <div class="card-body">
+              <div class="form-grid-6">
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="fld-flood">Flood Hazard Risk Tier</label>
+                  <input type="text" class="form-control fld-derived" id="fld-flood" value="HIGH (Riverine / Pluvial Zone)" readonly>
+                  <span class="field-hint">GIS Model Layer v3.2</span>
+                </div>
+
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="fld-seismic">Seismic / Earthquake Zone</label>
+                  <input type="text" class="form-control fld-derived" id="fld-seismic" value="Zone III (Moderate Seismic Intensity)" readonly>
+                  <span class="field-hint">National Disaster Management Mapping</span>
+                </div>
+
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="fld-cyclone">Cyclone &amp; Windstorm Exposure</label>
+                  <input type="text" class="form-control fld-derived" id="fld-cyclone" value="MEDIUM (Coastal Proximity Buffer)" readonly>
+                </div>
+
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="fld-inund">Coastal Inundation / Sea-Level Rise</label>
+                  <input type="text" class="form-control fld-derived" id="fld-inund" value="HIGH (10km Coastal Inundation Line)" readonly>
+                </div>
+
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="fld-heat">Extreme Heat &amp; Wet-Bulb Stress</label>
+                  <input type="text" class="form-control fld-derived" id="fld-heat" value="MEDIUM (Thermal Anomaly Index 1.8°C)" readonly>
+                </div>
+
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="fld-drought">Drought / Precipitation Deficit</label>
+                  <input type="text" class="form-control fld-derived" id="fld-drought" value="LOW (Precipitation Index Normal)" readonly>
+                </div>
+
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="fld-hist-event">Historical Damage Event Recorded <span class="req-star" title="Required" aria-hidden="true">*</span></label>
+                  <select class="form-control fld-required mark-dirty" id="fld-hist-event" name="HAS_HAZARD_EVENT_HIST" data-toggles="event-dep" data-show-when="Y">
+                    <option value="" selected disabled>-- Select Option --</option><option value="N">No</option><option value="Y">Yes</option></select>
+                </div>
+
+                <div class="form-group col-span-4 event-dep">
+                  <label class="form-label" for="fld-event-type">Most Recent Event Type</label>
+                  <select class="form-control mark-dirty" id="fld-event-type" name="LAST_EVENT_TYPE">
+                    <option value="" selected disabled>-- Select Option --</option><option value="FLOOD">Pluvial Urban Inundation</option><option value="CYCLONE">Cyclone Gale Storm</option></select>
+                </div>
+
+                <div class="form-group col-span-4 event-dep">
+                  <label class="form-label" for="fld-event-loss">Direct Asset Damage Loss (INR)</label>
+                  <input type="text" class="form-control mark-dirty" id="fld-event-loss" name="LAST_EVENT_LOSS_AMT" value="0.00">
+                </div>
+
+                <div class="form-group col-span-6">
+                  <label class="form-label" for="fld-risk-score">Model-Derived Physical Risk Score</label>
+                  <input type="text" class="form-control fld-derived" id="fld-risk-score" value="68.50 / 100.00" readonly style="font-weight:700;">
+                </div>
+
+                <div class="form-group col-span-6">
+                  <label class="form-label" for="fld-vuln">Climate Vulnerability Index (CVI)</label>
+                  <input type="text" class="form-control fld-derived" id="fld-vuln" value="0.6420 (High Physical Vulnerability)" readonly style="font-weight:700; color:var(--danger);">
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section 4: Structural Resilience &amp; Insurance Protection (PRPRES) -->
+        <div id="tab-res" class="tab-panel tab-body" role="tabpanel">
+          <div class="card">
+            <div class="card-header">
+              <span>Section 4: Structural Resilience &amp; Insurance Protection (PRPRES)</span>
+              <span class="breadcrumb-tag">tab_sec_code: RES</span>
+            </div>
+            <div class="card-body">
+              <div class="form-grid-6">
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="fld-flood-def">Flood Barriers / Physical Defenses <span class="req-star" title="Required" aria-hidden="true">*</span></label>
+                  <select class="form-control fld-required mark-dirty" id="fld-flood-def" name="FLOOD_DEFENSE_YN">
+                    <option value="" selected disabled>-- Select Option --</option><option value="Y">Yes (Perimeter gates &amp; sump pumps)</option><option value="N">No Defense Systems</option></select>
+                </div>
+
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="fld-seismic-res">Structural Engineering Seismic Design <span class="req-star" title="Required" aria-hidden="true">*</span></label>
+                  <select class="form-control fld-required mark-dirty" id="fld-seismic-res" name="SEISMIC_RESISTANT_YN">
+                    <option value="" selected disabled>-- Select Option --</option><option value="Y">Certified BIS IS-1893 Compliant</option><option value="N">Standard Unreinforced</option></select>
+                </div>
+
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="fld-backup">Emergency Auxiliary Power Backup <span class="req-star" title="Required" aria-hidden="true">*</span></label>
+                  <select class="form-control fld-required mark-dirty" id="fld-backup" name="BACKUP_POWER_YN">
+                    <option value="" selected disabled>-- Select Option --</option><option value="Y">Full Generator &amp; Battery Backup</option><option value="N">No Backup Supply</option></select>
+                </div>
+
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="fld-ins-yn">Property Insurance Active <span class="req-star" title="Required" aria-hidden="true">*</span></label>
+                  <select class="form-control fld-required mark-dirty" id="fld-ins-yn" name="INSURANCE_COVERED_YN" data-toggles="ins-dep" data-show-when="Y">
+                    <option value="" selected disabled>-- Select Option --</option><option value="Y">Yes</option><option value="N">No</option></select>
+                </div>
+
+                <div class="form-group col-span-4 ins-dep">
+                  <label class="form-label" for="fld-ins-no">Insurance Policy Number</label>
+                  <input type="text" class="form-control mark-dirty" id="fld-ins-no" name="INS_POLICY_NO" value="POL-BAJAJ-2026-9901">
+                </div>
+
+                <div class="form-group col-span-4 ins-dep">
+                  <label class="form-label" for="fld-ins-to">Policy Expiration Date</label>
+                  <input type="date" class="form-control mark-dirty" id="fld-ins-to" name="INS_VALID_TO" value="2027-04-30">
+                </div>
+
+                <div class="form-group col-span-6 ins-dep">
+                  <label class="form-label" for="fld-ins-sum">Insured Sum / Asset Coverage (INR)</label>
+                  <input type="text" class="form-control mark-dirty" id="fld-ins-sum" name="INS_SUM_INSURED" value="150,00,00,000.00">
+                </div>
+
+                <div class="form-group col-span-6 ins-dep">
+                  <label class="form-label" for="fld-ins-peril">Natural Peril Coverage</label>
+                  <select class="form-control mark-dirty" id="fld-ins-peril" name="INS_NATURAL_PERIL_YN">
+                    <option value="" selected disabled>-- Select Option --</option><option value="Y">Yes</option><option value="N">No</option></select>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section 5: Compliance &amp; Social -->
+        <div id="tab-cso" class="tab-panel tab-body" role="tabpanel">
+          <div class="card">
+            <div class="card-header">
+              <span>Section 5: Compliance &amp; Social Assessment</span>
+              <span class="breadcrumb-tag">tab_sec_code: CSO</span>
+            </div>
+            <div class="card-body">
+              <div class="form-grid-6">
+                <div class="form-group col-span-6">
+                  <label class="form-label" for="fld-clearance">Statutory Environmental Clearance Status <span class="req-star">*</span></label>
+                  <select class="form-control fld-required mark-dirty" id="fld-clearance" name="STATUTORY_CLEARANCE_STATUS">
+                    <option value="" selected disabled>-- Select Option --</option>
+                    <option value="COMPLIANT">Full Consent to Operate (CTO)</option>
+                    <option value="PENDING">Renewal Pending</option>
+                  </select>
+                </div>
+                <div class="form-group col-span-6">
+                  <label class="form-label" for="fld-notices">Outstanding Regulatory Notices</label>
+                  <select class="form-control fld-optional mark-dirty" id="fld-notices" name="REGULATORY_NOTICES_YN">
+                    <option value="" selected disabled>-- Select Option --</option>
+                    <option value="N">No Notices / Litigation Free</option>
+                    <option value="Y">Active Notice Under Inquiry</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section 6: ESG Assessment Summary (read-only; derived from the record's pillar scores, not editable) -->
+        <div id="prop-tab-sec-6" class="tab-panel tab-body" role="tabpanel">
+          <div class="card" id="prop-sum-pending" hidden>
+            <div class="card-body">
+              <strong>ESG Assessment Summary pending</strong>
+              <p class="field-hint" style="margin-top: 6px;">Complete Sections 1 to 5 and sign them off. The summary is generated once the assessment is finalised.</p>
+            </div>
+          </div>
+          <div class="card" id="prop-sum-unavailable" hidden>
+            <div class="card-body">
+              <strong>ESG Assessment Summary unavailable</strong>
+              <p class="field-hint" style="margin-top: 6px;">No pillar scores are recorded for this collateral.</p>
+            </div>
+          </div>
+
+          <div class="form-grid-6 sum-grid" id="prop-sum-grid" hidden>
+            <!-- Card 1: Property overview -->
+            <div class="card col-span-4">
+              <div class="card-header"><span>Property Overview</span></div>
+              <div class="card-body">
+                <div class="prop-sum-thumb">Property image</div>
+                <div class="sum-row"><span>Property ID</span><strong id="prop-sum-id">-</strong></div>
+                <div class="sum-row"><span>Property Type</span><strong id="prop-sum-type">-</strong></div>
+                <div class="sum-row"><span>Built-up Area (SqFt)</span><strong id="prop-sum-builtup">-</strong></div>
+                <div class="sum-row"><span>Built Year</span><strong id="prop-sum-year">-</strong></div>
+                <div class="sum-row"><span>City</span><strong id="prop-sum-city">-</strong></div>
+                <div class="sum-row"><span>Pincode</span><strong id="prop-sum-pincode">-</strong></div>
+              </div>
+            </div>
+
+            <!-- Overall ESG outcome -->
+            <div class="card col-span-4">
+              <div class="card-header"><span>Overall ESG Outcome</span></div>
+              <div class="card-body">
+                <div class="score-circle" id="prop-sum-circle">
+                  <div class="score-circle-inner">
+                    <span id="prop-sum-score">-</span>
+                    <small>/ 100</small>
+                  </div>
+                </div>
+                <div class="sum-row" style="margin-top: 12px;"><span>Grade</span><span class="pill-badge pill-blue" id="prop-sum-grade">-</span></div>
+                <div class="sum-row"><span>Grade Descriptor</span><strong id="prop-sum-grade-label">-</strong></div>
+                <div class="sum-row"><span>ESG Haircut</span><strong id="prop-sum-haircut">-</strong></div>
+              </div>
+            </div>
+
+            <!-- Valuation impact -->
+            <div class="card col-span-4">
+              <div class="card-header"><span>Valuation Impact</span></div>
+              <div class="card-body">
+                <div class="sum-row"><span>Authoritative Value</span><strong id="prop-sum-auth">-</strong></div>
+                <div class="sum-row"><span>Policy Haircut (<span id="prop-sum-policy-pct">-</span>)</span><strong id="prop-sum-policy-amt">-</strong></div>
+                <div class="sum-row"><span>ESG Haircut (<span id="prop-sum-esg-pct">-</span>)</span><strong id="prop-sum-esg-amt">-</strong></div>
+                <div class="sum-row" style="border-bottom: 0;"><span><strong>Final ESG-Adjusted Collateral Value</strong></span><strong id="prop-sum-final" style="color: var(--primary-navy);">-</strong></div>
+              </div>
+            </div>
+
+            <!-- Section-wise ESG scores (full width) -->
+            <div class="card col-span-12">
+              <div class="card-header"><span>Section-Wise ESG Scores (100% Total)</span></div>
+              <div class="card-body no-pad table-scroll">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Assessment Pillar</th>
+                      <th>Weight</th>
+                      <th>Raw Score (/100)</th>
+                      <th>Weighted Contribution</th>
+                      <th>Risk Band</th>
+                    </tr>
+                  </thead>
+                  <tbody id="prop-sum-pillars"></tbody>
+                  <tfoot>
+                    <tr>
+                      <td><strong>Composite Collateral ESG Score</strong></td>
+                      <td><strong>100.00 %</strong></td>
+                      <td>-</td>
+                      <td><strong id="prop-sum-total">-</strong></td>
+                      <td><span class="pill-badge pill-blue" id="prop-sum-total-band">-</span></td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+
+            <!-- Key risk indicators -->
+            <div class="card col-span-6">
+              <div class="card-header"><span>Key Risk Indicators</span></div>
+              <div class="card-body">
+                <div class="sum-row"><span>Flood Zone</span><strong id="prop-sum-flood">-</strong></div>
+                <div class="sum-row"><span>Energy Star Rating</span><strong id="prop-sum-energy">-</strong></div>
+                <div class="sum-row"><span>Water Stress</span><strong id="prop-sum-water">-</strong></div>
+                <div class="sum-row"><span>Seismic Band</span><strong id="prop-sum-seismic">-</strong></div>
+              </div>
+            </div>
+
+            <!-- Additional insights -->
+            <div class="card col-span-6">
+              <div class="card-header"><span>Additional Insights</span></div>
+              <div class="card-body">
+                <div class="score-card-summary">
+                  <div class="score-box">
+                    <div class="score-box-title">Energy Use Intensity (kWh/sq.m/yr)</div>
+                    <div class="score-box-val" id="prop-sum-eui">-</div>
+                  </div>
+                  <div class="score-box">
+                    <div class="score-box-title">Solar Rooftop Capacity (kWp)</div>
+                    <div class="score-box-val" id="prop-sum-solar">-</div>
+                  </div>
+                  <div class="score-box">
+                    <div class="score-box-title">Rainwater Harvesting</div>
+                    <div class="score-box-val" id="prop-sum-rwh">-</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 4: Observation ledger (ENVOBV / sec-ledger) -->
+        <div id="tab-ledger" class="tab-panel tab-body" role="tabpanel">
+          <div class="card">
+            <div class="card-header">
+              <span>Annual Environmental Ledger (ENVOBV)</span>
+              <button class="btn btn-primary btn-sm" type="button" onclick="showToast('Adding a new FY observation is not available yet.')">+ Add Observation FY</button>
+            </div>
+            <div class="card-body no-pad table-scroll">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Reporting FY</th>
+                    <th>Electricity (kWh/yr)</th>
+                    <th>Water (kL/yr)</th>
+                    <th>Waste Recycling %</th>
+                    <th>Carbon (tCO2e)</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><strong>2025-2026</strong></td>
+                    <td>1,840,000.00</td>
+                    <td>14,200.00</td>
+                    <td>68.50 %</td>
+                    <td>1,508.80</td>
+                    <td><span class="pill-badge pill-green">Audited</span></td>
+                  </tr>
+                  <tr>
+                    <td><strong>2024-2025</strong></td>
+                    <td>1,920,000.00</td>
+                    <td>15,800.00</td>
+                    <td>60.00 %</td>
+                    <td>1,574.40</td>
+                    <td><span class="pill-badge pill-blue">Approved</span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Unified contextual sign-off bar -->
+        <div id="active-tab-signoff-bar" class="signoff-bar signoff-unified" hidden>
+          <span class="field-hint js-guidance" id="signoff-guidance-text"></span>
+          <span class="signoff-actions">
+            <button class="btn btn-secondary js-cancel-btn" type="button" disabled id="btn-cancel-active-tab" onclick="cancelActiveTabChanges()">Cancel Changes</button>
+            <button class="btn btn-primary js-signoff-btn" type="button" disabled id="btn-signoff-active-tab" onclick="signOffActiveTab()">Sign Off Section</button>
+            <button class="btn btn-secondary js-reopen-btn" type="button" id="btn-reopen-active-tab" onclick="reopenActiveTab()" hidden>Re-open Section</button>
+          </span>
+        </div>
+
+      </section>
+
+      <!-- VIEW 3: Manufacturing Plant Assessment Form (CORE_MFG) -->
+      <section id="view-mfg-form" hidden>
+
+        <div class="card banner-card">
+          <div class="card-body banner-body">
+            <div>
+              <strong class="banner-name" id="mfg-banner-name"></strong>
+              <span class="breadcrumb-tag" id="mfg-banner-id"></span>
+              <span class="breadcrumb-tag" style="background:#fef3c7; color:#92400e;">TEMPLATE: CORE_MFG</span>
+            </div>
+            <button class="btn btn-secondary btn-sm" type="button" onclick="closeMfgFormToSearch()">← Back to Search</button>
+          </div>
+        </div>
+
+        <div class="form-tab-nav" role="tablist" aria-label="Manufacturing assessment sections">
+          <button class="form-tab-btn active" role="tab" aria-selected="true" data-mfg-tab="mfg-tab-sec-1" type="button" onclick="handleTabSwitch('mfg-tab-sec-1', this)">1. Facility &amp; Siting</button>
+          <button class="form-tab-btn" role="tab" aria-selected="false" data-mfg-tab="mfg-tab-sec-2" type="button" onclick="handleTabSwitch('mfg-tab-sec-2', this)">2. Energy &amp; Emissions</button>
+          <button class="form-tab-btn" role="tab" aria-selected="false" data-mfg-tab="mfg-tab-sec-3" type="button" onclick="handleTabSwitch('mfg-tab-sec-3', this)">3. Effluent &amp; Water (ETP)</button>
+          <button class="form-tab-btn" role="tab" aria-selected="false" data-mfg-tab="mfg-tab-sec-4" type="button" onclick="handleTabSwitch('mfg-tab-sec-4', this)">4. Hazardous Materials</button>
+          <button class="form-tab-btn" role="tab" aria-selected="false" data-mfg-tab="mfg-tab-sec-5" type="button" onclick="handleTabSwitch('mfg-tab-sec-5', this)">5. Consents &amp; Regulatory</button>
+          <button class="form-tab-btn" role="tab" aria-selected="false" data-mfg-tab="mfg-tab-sec-6" type="button" onclick="handleTabSwitch('mfg-tab-sec-6', this)">6. Pending Definition</button>
+          <button class="form-tab-btn" role="tab" aria-selected="false" data-mfg-tab="mfg-tab-sec-7" type="button" onclick="handleTabSwitch('mfg-tab-sec-7', this)">7. Workforce</button>
+          <button class="form-tab-btn" role="tab" aria-selected="false" data-mfg-tab="mfg-tab-sec-8" type="button" onclick="handleTabSwitch('mfg-tab-sec-8', this)">8. Energy Management (ISO 50001)</button>
+          <button class="form-tab-btn" role="tab" aria-selected="false" data-mfg-tab="mfg-tab-sec-9" type="button" onclick="handleTabSwitch('mfg-tab-sec-9', this)">9. Pending Definition</button>
+          <button class="form-tab-btn" data-tab="mfg-tab-sec-10" onclick="handleTabSwitch('mfg-tab-sec-10', this)">10. ESG Assessment Summary</button>
+          <button class="form-tab-btn" role="tab" aria-selected="false" data-tab="mfg-tab-ledger" type="button" onclick="handleTabSwitch('mfg-tab-ledger', this)">Observation Ledger</button>"
+        </div>
+
+        <!-- Section 1: Facility & Siting (MFGLOC) -->
+        <div id="mfg-tab-sec-1" class="tab-panel tab-body active" role="tabpanel">
+          <div class="card">
+            <div class="card-header">
+              <span>Section 1: Facility &amp; Siting Baseline (MFGLOC)</span>
+              <span class="breadcrumb-tag">tab_sec_code: MLO</span>
+            </div>
+            <div class="card-body">
+              <div class="form-grid-6">
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="mfg-coll-id">Plant Reference ID</label>
+                  <input type="text" class="form-control fld-derived" id="mfg-coll-id" readonly>
+                </div>
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="mfg-pcb">Pollution Control Board Category <span class="req-star" aria-hidden="true">*</span></label>
+                  <select class="form-control fld-required mark-dirty" id="mfg-pcb" name="PCB_CATEGORY">
+                    <option value="" selected disabled>-- Select Option --</option>
+                    <option value="RED">Red Category (Heavy / High Pollution Index &gt; 60)</option>
+                    <option value="ORANGE">Orange Category (Moderate Pollution Index 41-59)</option>
+                    <option value="GREEN">Green Category (Low Pollution Index 21-40)</option>
+                    <option value="WHITE">White Category (Non-polluting)</option>
+                  </select>
+                </div>
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="mfg-zone">Industrial Zone Classification <span class="req-star" aria-hidden="true">*</span></label>
+                  <select class="form-control fld-required mark-dirty" id="mfg-zone" name="INDUSTRIAL_ZONE_TYPE">
+                    <option value="" selected disabled>-- Select Option --</option>
+                    <option value="GIDC_NOTIFIED">Notified Industrial Estate (GIDC / MIDC)</option>
+                    <option value="SPECIAL_ECONOMIC_ZONE">Special Economic Zone (SEZ)</option>
+                    <option value="NON_NOTIFIED">Non-Notified / Standalone Industrial Land</option>
+                  </select>
+                </div>
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="mfg-shifts">Operating Schedule <span class="req-star" aria-hidden="true">*</span></label>
+                  <select class="form-control fld-required mark-dirty" id="mfg-shifts" name="OPERATING_SHIFTS">
+                    <option value="" selected disabled>-- Select Option --</option>
+                    <option value="THREE_SHIFTS">3 Shifts (24x7 Continuous Process)</option>
+                    <option value="TWO_SHIFTS">2 Shifts (16 Hours/Day)</option>
+                    <option value="SINGLE_SHIFT">Single Shift (General)</option>
+                  </select>
+                </div>
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="mfg-lat">Facility Latitude <span class="req-star" aria-hidden="true">*</span></label>
+                  <input type="text" class="form-control fld-required mark-dirty" id="mfg-lat" name="MFG_LATITUDE" placeholder="e.g. 22.3071588">
+                </div>
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="mfg-lon">Facility Longitude <span class="req-star" aria-hidden="true">*</span></label>
+                  <input type="text" class="form-control fld-required mark-dirty" id="mfg-lon" name="MFG_LONGITUDE" placeholder="e.g. 73.1812187">
+                </div>
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="mfg-corridor">Industrial Corridor</label>
+                  <input type="text" class="form-control fld-optional mark-dirty" id="mfg-corridor" name="INDUSTRIAL_CORRIDOR">
+                </div>
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="mfg-workforce-s1">Total Employees (Workforce)</label>
+                  <input type="text" class="form-control fld-derived" id="mfg-workforce-s1" name="WORKFORCE_TOTAL_S1" readonly>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sections 2-5: placeholders pending field definitions -->
+<div id="mfg-tab-sec-2" class="tab-panel tab-body" role="tabpanel">
+          <div class="card">
+            <div class="card-header">
+              <span>Section 2: Energy &amp; Emissions Baseline (MFGENV)</span>
+              <span class="breadcrumb-tag">tab_sec_code: MEN</span>
+            </div>
+            <div class="card-body">
+              <div class="form-grid-6">
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="mfg-fuel">Primary Thermal Fuel Source <span class="req-star" aria-hidden="true">*</span></label>
+                  <select class="form-control fld-required mark-dirty" id="mfg-fuel" name="PRIMARY_FUEL_TYPE">
+                    <option value="" selected disabled>-- Select Option --</option>
+                    <option value="COAL_LIGNITE">Coal / Lignite</option>
+                    <option value="FO_LDO">Furnace Oil / LDO</option>
+                    <option value="NATURAL_GAS_PNG">Natural Gas / PNG</option>
+                    <option value="BIOMASS_BRIQUETTES">Biomass Briquettes</option>
+                    <option value="GRID_ELECTRICITY_ONLY">Grid Electricity Only</option>
+                  </select>
+                </div>
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="mfg-boiler">Captive Boiler / Furnace Capacity</label>
+                  <input type="text" class="form-control fld-optional mark-dirty" id="mfg-boiler" name="BOILER_CAPACITY" placeholder="e.g. 12 TPH">
+                </div>
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="mfg-cems">Continuous Emission Monitoring (CEMS) <span class="req-star" aria-hidden="true">*</span></label>
+                  <select class="form-control fld-required mark-dirty" id="mfg-cems" name="CEMS_INSTALLED_YN">
+                    <option value="" selected disabled>-- Select Option --</option>
+                    <option value="YES_CPCB_CONNECTED">Yes - Connected to CPCB</option>
+                    <option value="YES_STANDALONE">Yes - Standalone Unit</option>
+                    <option value="NO">No</option>
+                  </select>
+                </div>
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="mfg-apcd">Air Pollution Control Devices (APCD) Active <span class="req-star" aria-hidden="true">*</span></label>
+                  <select class="form-control fld-required mark-dirty" id="mfg-apcd" name="APCD_TYPE">
+                    <option value="" selected disabled>-- Select Option --</option>
+                    <option value="ESP">Electrostatic Precipitator (ESP)</option>
+                    <option value="BAG_FILTER">Bag Filter</option>
+                    <option value="CYCLONE_WET_SCRUBBER">Cyclone / Wet Scrubber</option>
+                    <option value="NOT_APPLICABLE">Not Applicable</option>
+                  </select>
+                </div>
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="mfg-renew">Captive Renewable Share (%)</label>
+                  <input type="text" class="form-control fld-optional mark-dirty" id="mfg-renew" name="RENEWABLE_SHARE_PCT" placeholder="e.g. 18.5">
+                </div>
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="mfg-sec">Specific Energy Consumption Benchmark <span class="req-star" aria-hidden="true">*</span></label>
+                  <select class="form-control fld-required mark-dirty" id="mfg-sec" name="SEC_BENCHMARK">
+                    <option value="" selected disabled>-- Select Option --</option>
+                    <option value="PAT_COMPLIANT">PAT Compliant (BEE Cycle)</option>
+                    <option value="INDUSTRY_AVERAGE">Industry Average</option>
+                    <option value="BELOW_BENCHMARK">Below Benchmark</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+<div id="mfg-tab-sec-3" class="tab-panel tab-body" role="tabpanel">
+          <div class="card">
+            <div class="card-header">
+              <span>Section 3: Effluent &amp; Water Baseline (MFGWAT)</span>
+              <span class="breadcrumb-tag">tab_sec_code: MWT</span>
+            </div>
+            <div class="card-body">
+              <div class="form-grid-6">
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="mfg-water-src">Primary Freshwater Source <span class="req-star" aria-hidden="true">*</span></label>
+                  <select class="form-control fld-required mark-dirty" id="mfg-water-src" name="WATER_SOURCE_PRIMARY">
+                    <option value="" selected disabled>-- Select Option --</option>
+                    <option value="GROUNDWATER_BOREWELL">Groundwater (Borewell)</option>
+                    <option value="INDUSTRIAL_SUPPLY">Industrial Estate Supply</option>
+                    <option value="RIVER_CANAL_SURFACE">River / Canal (Surface Water)</option>
+                    <option value="TANKER_PURCHASE">Tanker Purchase</option>
+                  </select>
+                </div>
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="mfg-etp">Effluent Treatment Plant (ETP) Type <span class="req-star" aria-hidden="true">*</span></label>
+                  <select class="form-control fld-required mark-dirty" id="mfg-etp" name="ETP_TYPE">
+                    <option value="" selected disabled>-- Select Option --</option>
+                    <option value="CAPTIVE_ETP">Captive ETP (On-site)</option>
+                    <option value="CETP_CONNECTED">Connected to CETP</option>
+                    <option value="ZERO_LIQUID_DISCHARGE">Zero Liquid Discharge (ZLD)</option>
+                    <option value="NOT_APPLICABLE">Not Applicable</option>
+                  </select>
+                </div>
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="mfg-wastewater">Daily Wastewater Generation (KLD) <span class="req-star" aria-hidden="true">*</span></label>
+                  <input type="text" class="form-control fld-required mark-dirty" id="mfg-wastewater" name="WASTEWATER_GEN_KLD" placeholder="e.g. 240">
+                </div>
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="mfg-recycle">Treated Water Recycling Ratio (%)</label>
+                  <input type="text" class="form-control fld-optional mark-dirty" id="mfg-recycle" name="RECYCLE_RATIO_PCT" placeholder="e.g. 65.0">
+                </div>
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="mfg-cgwa">CGWA Groundwater NOC Status <span class="req-star" aria-hidden="true">*</span></label>
+                  <select class="form-control fld-required mark-dirty" id="mfg-cgwa" name="CGWA_NOC_STATUS">
+                    <option value="" selected disabled>-- Select Option --</option>
+                    <option value="ACTIVE_VALID">Active / Valid NOC</option>
+                    <option value="RENEWAL_APPLIED">Renewal Applied</option>
+                    <option value="EXEMPTED">Exempted</option>
+                    <option value="NOT_OBTAINED">Not Obtained</option>
+                  </select>
+                </div>
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="mfg-eqms">Online Effluent Quality Monitoring (EQMS) <span class="req-star" aria-hidden="true">*</span></label>
+                  <select class="form-control fld-required mark-dirty" id="mfg-eqms" name="EQMS_ACTIVE_YN">
+                    <option value="" selected disabled>-- Select Option --</option>
+                    <option value="YES_LIVE_SPCB_STREAM">Yes - Live SPCB Stream</option>
+                    <option value="MANUAL_SAMPLING_ONLY">Manual Sampling Only</option>
+                    <option value="NOT_APPLICABLE">Not Applicable</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div id="mfg-tab-sec-4" class="tab-panel tab-body" role="tabpanel"><div class="card"><div class="card-header"><span>Section 4: Hazardous Materials</span><span class="breadcrumb-tag">tab_sec_code: MHZ</span></div><div class="card-body"><p class="field-hint">Field definitions for this section have not been supplied yet.</p></div></div>
+          <div class="card">
+            <div class="card-header"><span>Fuel Consumption (auto-filled from record)</span><span class="breadcrumb-tag">Read-only</span></div>
+            <div class="card-body">
+              <div class="form-grid-6">
+                <div class="form-group col-span-2">
+                  <label class="form-label" for="mfg-fuel-gas">Natural Gas (SCM)</label>
+                  <input type="text" class="form-control fld-derived" id="mfg-fuel-gas" name="FUEL_NATURAL_GAS_SCM" readonly>
+                </div>
+                <div class="form-group col-span-2">
+                  <label class="form-label" for="mfg-fuel-diesel">Diesel (KL)</label>
+                  <input type="text" class="form-control fld-derived" id="mfg-fuel-diesel" name="FUEL_DIESEL_KL" readonly>
+                </div>
+                <div class="form-group col-span-2">
+                  <label class="form-label" for="mfg-fuel-furnace">Furnace Oil (KL)</label>
+                  <input type="text" class="form-control fld-derived" id="mfg-fuel-furnace" name="FUEL_FURNACE_OIL_KL" readonly>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div id="mfg-tab-sec-5" class="tab-panel tab-body" role="tabpanel"><div class="card"><div class="card-header"><span>Section 5: Consents &amp; Regulatory</span><span class="breadcrumb-tag">tab_sec_code: MRG</span></div><div class="card-body"><p class="field-hint">Field definitions for this section have not been supplied yet.</p></div></div></div>
+        <div id="mfg-tab-sec-6" class="tab-panel tab-body" role="tabpanel"><div class="card"><div class="card-header"><span>Section 6: Pending Definition</span></div><div class="card-body"><p class="field-hint">Field definitions for this section have not been supplied yet.</p></div></div></div>
+        <div id="mfg-tab-sec-7" class="tab-panel tab-body" role="tabpanel">
+          <div class="card">
+            <div class="card-header"><span>Section 7: Workforce</span><span class="breadcrumb-tag">Read-only</span></div>
+            <div class="card-body">
+              <div class="form-grid-6">
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="mfg-workforce-s7">Total Employees (Workforce)</label>
+                  <input type="text" class="form-control fld-derived" id="mfg-workforce-s7" name="WORKFORCE_TOTAL_S7" readonly>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div id="mfg-tab-sec-8" class="tab-panel tab-body" role="tabpanel">
+          <div class="card">
+            <div class="card-header"><span>Section 8: Energy Management (ISO 50001)</span><span class="breadcrumb-tag">Read-only</span></div>
+            <div class="card-body">
+              <div class="form-grid-6">
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="mfg-iso-status">ISO 50001 Certification Status</label>
+                  <input type="text" class="form-control fld-derived" id="mfg-iso-status" name="ISO_50001_STATUS" readonly>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div id="mfg-tab-sec-9" class="tab-panel tab-body" role="tabpanel"><div class="card"><div class="card-header"><span>Section 9: Pending Definition</span></div><div class="card-body"><p class="field-hint">Field definitions for this section have not been supplied yet.</p></div></div></div>
+
+        <!-- Section 10: ESG Assessment Summary (read-only, populated by renderMfgSummary) -->
+        <div id="mfg-tab-sec-10" class="tab-panel tab-body" role="tabpanel">
+          <div class="form-grid-6 sum-grid">
+            <!-- Top row: three equal cards (span 4 each) -->
+            <div class="card col-span-4">
+              <div class="card-header"><span>Plant Overview</span></div>
+              <div class="card-body">
+                <div class="sum-row"><span>Collateral ID</span><strong id="mfg-sum-id">-</strong></div>
+                <div class="sum-row"><span>Facility Name</span><strong id="mfg-sum-facility">-</strong></div>
+                <div class="sum-row"><span>Customer Name</span><strong id="mfg-sum-customer">-</strong></div>
+                <div class="sum-row"><span>Customer ID</span><strong id="mfg-sum-customer-id">-</strong></div>
+                <div class="sum-row"><span>Total Workforce</span><strong id="mfg-sum-workforce">-</strong></div>
+                <div class="sum-row"><span>ISO 50001</span><strong id="mfg-sum-iso">-</strong></div>
+              </div>
+            </div>
+
+            <div class="card col-span-4">
+              <div class="card-header"><span>Composite ESG Score</span></div>
+              <div class="card-body">
+                <div class="score-circle" id="mfg-sum-circle">
+                  <div class="score-circle-inner">
+                    <span id="mfg-sum-score">-</span>
+                    <small>/ 100</small>
+                  </div>
+                </div>
+                <div class="sum-row" style="margin-top: 12px;"><span>Grade</span><span class="pill-badge pill-blue" id="mfg-sum-grade">-</span></div>
+                <div class="sum-row" style="border-bottom: 0;"><span>Grade Descriptor</span><strong id="mfg-sum-grade-label">-</strong></div>
+              </div>
+            </div>
+
+            <div class="card col-span-4">
+              <div class="card-header"><span>Valuation Impact</span></div>
+              <div class="card-body">
+                <div class="sum-row"><span>Authoritative Value</span><strong id="mfg-sum-auth">-</strong></div>
+                <div class="sum-row"><span>Policy Haircut (<span id="mfg-sum-policy-pct">-</span>)</span><strong id="mfg-sum-policy-amt">-</strong></div>
+                <div class="sum-row"><span>ESG Haircut (<span id="mfg-sum-esg-pct">-</span>)</span><strong id="mfg-sum-esg-amt">-</strong></div>
+                <div class="sum-row" style="border-bottom: 0;"><span><strong>Final ESG-Adjusted Collateral Value</strong></span><strong id="mfg-sum-final" style="color: var(--primary-navy);">-</strong></div>
+              </div>
+            </div>
+
+            <!-- Bottom row: pillar table at full width -->
+            <div class="card col-span-12">
+              <div class="card-header"><span>Section-Wise ESG Scores (100% Total)</span></div>
+              <div class="card-body no-pad table-scroll">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Assessment Pillar</th>
+                      <th>Weight</th>
+                      <th>Raw Score (/100)</th>
+                      <th>Weighted Contribution</th>
+                      <th>Risk Band</th>
+                    </tr>
+                  </thead>
+                  <tbody id="mfg-sum-pillars"></tbody>
+                  <tfoot>
+                    <tr>
+                      <td><strong>Composite Plant ESG Score</strong></td>
+                      <td><strong>100.00 %</strong></td>
+                      <td>-</td>
+                      <td><strong id="mfg-sum-total">-</strong></td>
+                      <td><span class="pill-badge pill-blue" id="mfg-sum-total-band">-</span></td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="mfg-tab-ledger" class="tab-panel tab-body" role="tabpanel"><div class="card"><div class="card-header"><span>Observation Ledger</span></div><div class="card-body"><p class="field-hint">Field definitions for this section have not been supplied yet.</p></div></div></div>
+
+        <div id="mfg-signoff-bar" class="signoff-bar signoff-unified" hidden>
+          <span class="field-hint js-guidance"></span>
+          <span class="signoff-actions">
+            <button class="btn btn-secondary js-cancel-btn" type="button" disabled onclick="cancelActiveTabChanges()">Cancel Changes</button>
+            <button class="btn btn-primary js-signoff-btn" type="button" disabled onclick="signOffActiveTab()">Sign Off Section 1</button>
+            <button class="btn btn-secondary js-reopen-btn" type="button" onclick="reopenActiveTab()" hidden>Re-open Section</button>
+          </span>
+        </div>
+
+      </section>
+      <!-- VIEW 4: Vehicle Assessment Form (FRM_VEH) -->
+      <section id="view-veh-form" hidden>
+
+        <div class="card banner-card" style="border-left-color: #f59e0b;">
+          <div class="card-body banner-body">
+            <div>
+              <strong class="banner-name" id="veh-banner-name"></strong>
+              <span class="breadcrumb-tag" id="veh-banner-id"></span>
+              <span class="breadcrumb-tag" style="background:#fef3c7; color:#92400e;">TEMPLATE: FRM_VEH</span>
+            </div>
+            <button class="btn btn-secondary btn-sm" type="button" onclick="closeVehicleFormToSearch()">← Back to Search</button>
+          </div>
+        </div>
+
+        <div class="form-tab-nav" role="tablist" aria-label="Vehicle assessment sections">
+          <button class="form-tab-btn active" role="tab" aria-selected="true" data-veh-tab="veh-tab-ident" type="button" onclick="handleTabSwitch('veh-tab-ident', this)">1. Identification &amp; Baseline</button>
+          <button class="form-tab-btn" role="tab" aria-selected="false" data-veh-tab="veh-tab-usage" type="button" onclick="handleTabSwitch('veh-tab-usage', this)">2. Operational Usage &amp; Energy</button>
+          <button class="form-tab-btn" role="tab" aria-selected="false" data-veh-tab="veh-tab-comp" type="button" onclick="handleTabSwitch('veh-tab-comp', this)">3. Compliance &amp; Fleet Health</button>
+          <button class="form-tab-btn" role="tab" aria-selected="false" data-veh-tab="veh-tab-clim" type="button" onclick="handleTabSwitch('veh-tab-clim', this)">4. Climate &amp; Transition Risk</button>
+          <button class="form-tab-btn" role="tab" aria-selected="false" data-veh-tab="veh-tab-sust" type="button" onclick="handleTabSwitch('veh-tab-sust', this)">5. Battery &amp; Circularity</button>
+          <button class="form-tab-btn" role="tab" aria-selected="false" data-veh-tab="veh-tab-sum" type="button" onclick="handleTabSwitch('veh-tab-sum', this)">6. Scoring &amp; Valuation Output</button>
+        </div>
+
+        <!-- ========================================== -->
+        <!-- TAB 1: Identification & Baseline (VEHIDENT) -->
+        <!-- ========================================== -->
+        <div id="veh-tab-ident" class="tab-panel tab-body active" role="tabpanel">
+          <div class="card">
+            <div class="card-header">
+              <span>Section 1: Vehicle Identification &amp; Technical Baseline (VEHIDENT)</span>
+              <span class="breadcrumb-tag">tab_sec_code: VID</span>
+            </div>
+            <div class="card-body">
+              <div class="form-grid-6">
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="veh-coll-id">Collateral Reference ID</label>
+                  <input type="text" class="form-control fld-derived" id="veh-coll-id" readonly>
+                </div>
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="veh-reg-no">Vehicle Registration Number <span class="req-star" aria-hidden="true">*</span></label>
+                  <div style="display: flex; gap: 6px;">
+                    <input type="text" class="form-control fld-required mark-dirty" id="veh-reg-no" name="VEH_REG_NO" placeholder="MH43CM5294" style="text-transform: uppercase;">
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="fetchVahanDetails()" style="white-space: nowrap; height: 32px;">Fetch VAHAN</button>
+                  </div>
+                </div>
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="veh-vin">Chassis / VIN Number <span class="req-star" aria-hidden="true">*</span></label>
+                  <input type="text" class="form-control fld-required mark-dirty" id="veh-vin" name="VEH_VIN" placeholder="e.g. MAT882041P3K9840">
+                </div>
+
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="veh-engine-no">Engine / Motor Serial Number</label>
+                  <input type="text" class="form-control fld-optional mark-dirty" id="veh-engine-no" name="VEH_ENGINE_NO" placeholder="e.g. ENG-882041-EV">
+                </div>
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="veh-make-model">Make &amp; Model Specification <span class="req-star" aria-hidden="true">*</span></label>
+                  <input type="text" class="form-control fld-required mark-dirty" id="veh-make-model" name="VEH_MAKE_MODEL" placeholder="e.g. Tata Prima 5530.S EV">
+                </div>
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="veh-fuel-type">Fuel &amp; Powertrain Type <span class="req-star" aria-hidden="true">*</span></label>
+                  <select class="form-control fld-required mark-dirty" id="veh-fuel-type" name="VEH_FUEL_TYPE" onchange="updateVehSummaryStrip({})">
+                    <option value="" selected disabled>-- Select Option --</option>
+                    <option value="ELECTRIC_EV">Battery Electric Vehicle (BEV / EV)</option>
+                    <option value="DIESEL_BS6">Diesel (BS-VI Stage 2 Compliant)</option>
+                    <option value="CNG_HYBRID">CNG / Bio-CNG Hybrid</option>
+                    <option value="PETROL_HYBRID">Petrol Hybrid (Strong / Mild)</option>
+                    <option value="DIESEL_BS4_PRE">Diesel (BS-IV or Older - High Transition Risk)</option>
+                  </select>
+                </div>
+
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="veh-emission-std">Emission Standard Compliance <span class="req-star" aria-hidden="true">*</span></label>
+                  <select class="form-control fld-required mark-dirty" id="veh-emission-std" name="VEH_EMISSION_STD">
+                    <option value="" selected disabled>-- Select Option --</option>
+                    <option value="ZERO_EMISSION_EV">Zero Emission (100% Electric)</option>
+                    <option value="BS_VI_STAGE_2">Bharat Stage VI (Stage II - RDE)</option>
+                    <option value="BS_VI_STAGE_1">Bharat Stage VI (Stage I)</option>
+                    <option value="BS_IV">Bharat Stage IV (Legacy)</option>
+                    <option value="PRE_BS_IV">Pre-BS IV (High Scrappage Penalty)</option>
+                  </select>
+                </div>
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="veh-category">Vehicle Commercial Category <span class="req-star" aria-hidden="true">*</span></label>
+                  <select class="form-control fld-required mark-dirty" id="veh-category" name="VEH_CATEGORY" onchange="updateVehSummaryStrip({})">
+                    <option value="" selected disabled>-- Select Option --</option>
+                    <option value="LCV">Light Commercial Vehicle (LCV / Cargo Van)</option>
+                    <option value="HCV">Heavy Commercial Vehicle (HCV / Multi-Axle Haulage)</option>
+                    <option value="BUS_PASSENGER">Commercial Passenger Bus / Shuttle</option>
+                    <option value="THREE_WHEELER_CARGO">3-Wheeler Commercial Cargo (L5N)</option>
+                    <option value="SPECIAL_PURPOSE">Special Purpose / Reefer Cold Chain</option>
+                  </select>
+                </div>
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="veh-mfg-year">Manufacturing Year <span class="req-star" aria-hidden="true">*</span></label>
+                  <input type="text" class="form-control fld-required mark-dirty" id="veh-mfg-year" name="VEH_MFG_YEAR" placeholder="e.g. 2023" oninput="updateVehSummaryStrip({})">
+                </div>
+
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="veh-age-yrs">Vehicle Vintage / Asset Age (Yrs)</label>
+                  <input type="text" class="form-control fld-derived" id="veh-age-yrs" value="—" readonly>
+                </div>
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="veh-odometer">Current Odometer Reading</label>
+                  <input type="text" class="form-control fld-optional mark-dirty" id="veh-odometer" name="VEH_ODOMETER" placeholder="e.g. 45,000 km">
+                </div>
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="veh-operating-hub">Primary Operating Hub / Base</label>
+                  <input type="text" class="form-control fld-optional mark-dirty" id="veh-operating-hub" name="VEH_OPERATING_HUB" placeholder="e.g. Bengaluru Logistics Corridor">
+                </div>
+              </div>
+
+              <div class="info-callout-card">
+                <strong>⚡ Clean Mobility &amp; ESG Alignment:</strong> Surface vehicle assessment evaluates fuel transition risk, scrappage policy exposure (MoRTH Voluntary Fleet Modernization), tailpipe intensity, and battery circularity. Real-time verification against VAHAN 4.0 database.
+              </div>
+
+              <div class="kpi-grid">
+                <div class="kpi-micro-card">
+                  <span class="kpi-micro-title">Powertrain Tier</span>
+                  <span class="kpi-micro-val">Clean Electric / Zero Tailpipe</span>
+                  <span class="kpi-micro-badge pill-green">Tier 1 Leader</span>
+                </div>
+                <div class="kpi-micro-card">
+                  <span class="kpi-micro-title">Emission Benchmark</span>
+                  <span class="kpi-micro-val">MoRTH EV Compliant</span>
+                  <span class="kpi-micro-badge pill-blue">Zero Local NOx/PM</span>
+                </div>
+                <div class="kpi-micro-card">
+                  <span class="kpi-micro-title">Asset Vintage</span>
+                  <span class="kpi-micro-val">&lt; 3 Years (Prime Asset)</span>
+                  <span class="kpi-micro-badge pill-green">Low Scrappage Threat</span>
+                </div>
+                <div class="kpi-micro-card">
+                  <span class="kpi-micro-title">Registry Verification</span>
+                  <span class="kpi-micro-val">VAHAN 4.0 Live Matched</span>
+                  <span class="kpi-micro-badge pill-green">Verified</span>
+                </div>
+                <div class="kpi-micro-card">
+                  <span class="kpi-micro-title">Circularity Baseline</span>
+                  <span class="kpi-micro-val">RVSF Eligible Commercial Asset</span>
+                  <span class="kpi-micro-badge pill-blue">High Salvage</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ========================================== -->
+        <!-- TAB 2: Operational Usage & Energy (VEHUSAGE) -->
+        <!-- ========================================== -->
+        <div id="veh-tab-usage" class="tab-panel tab-body" role="tabpanel">
+          
+          <!-- Persistent Vehicle Summary Strip -->
+          <div class="card veh-summary-strip">
+            <div class="card-body" style="padding: 10px 18px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+              <div style="display: flex; align-items: center; gap: 12px;">
+                <div style="width: 36px; height: 36px; border-radius: 6px; background: #e0ecfb; display: flex; align-items: center; justify-content: center; font-size: 20px;">🚛</div>
+                <div>
+                  <strong style="color: var(--primary-navy); font-size: 13px;" class="veh-strip-model">—</strong>
+                  <div style="font-size: 11px; color: var(--text-muted);">Reg: <span class="veh-strip-reg" style="font-weight: 600; color: var(--primary-blue);">—</span> | Category: <span class="veh-strip-cat" style="font-weight: 600;">—</span></div>
+                </div>
+              </div>
+              <div style="display: flex; gap: 18px; font-size: 11px; color: var(--text-muted);">
+                <div>Mfg Year: <strong class="veh-strip-year" style="color: var(--text-dark);">—</strong></div>
+                <div>Powertrain: <strong class="veh-strip-fuel" style="color: var(--status-active);">—</strong></div>
+                <div>Asset Class: <strong style="color: var(--primary-navy);">Commercial Fleet</strong></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card" style="margin-bottom: 14px;">
+            <div class="card-header">
+              <span>Section 2A: Fleet Operational Duty &amp; Usage Profile</span>
+              <span class="breadcrumb-tag">tab_sec_code: VUS-A</span>
+            </div>
+            <div class="card-body">
+              <div class="form-grid-6">
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="veh-annual-km">Average Annual Run (Kilometres) <span class="req-star" aria-hidden="true">*</span></label>
+                  <input type="text" class="form-control fld-required mark-dirty" id="veh-annual-km" name="VEH_ANNUAL_KM" placeholder="e.g. 65,000">
+                </div>
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="veh-duty-cycle">Operational Duty Cycle <span class="req-star" aria-hidden="true">*</span></label>
+                  <select class="form-control fld-required mark-dirty" id="veh-duty-cycle" name="VEH_DUTY_CYCLE">
+                    <option value="" selected disabled>-- Select Option --</option>
+                    <option value="INTRA_CITY_LAST_MILE">Intra-City Last-Mile Distribution</option>
+                    <option value="INTER_CITY_HIGHWAY">Inter-City Long-Haul Highway</option>
+                    <option value="PORT_MINING_HAULAGE">Port / Mining Dedicated Haulage</option>
+                    <option value="MIXED_COMMERCIAL">Mixed Regional Commercial Routes</option>
+                  </select>
+                </div>
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="veh-telematics-yn">Telematics &amp; CAN-Bus Tracking <span class="req-star" aria-hidden="true">*</span></label>
+                  <select class="form-control fld-required mark-dirty" id="veh-telematics-yn" name="VEH_TELEMATICS_YN">
+                    <option value="" selected disabled>-- Select Option --</option>
+                    <option value="YES_LIVE_GPS_CAN">Yes - Live GPS &amp; CAN-Bus Telematics</option>
+                    <option value="YES_BASIC_GPS">Yes - Basic GPS Location Only</option>
+                    <option value="NO">No Telematics Installed</option>
+                  </select>
+                </div>
+                <div class="form-group col-span-6">
+                  <label class="form-label" for="veh-route-opt-yn">Dynamic Route Optimization AI</label>
+                  <select class="form-control fld-optional mark-dirty" id="veh-route-opt-yn" name="VEH_ROUTE_OPT_YN">
+                    <option value="" selected disabled>-- Select Option --</option>
+                    <option value="AI_ENABLED">AI Automated Route &amp; Load Optimization</option>
+                    <option value="MANUAL_DISPATCH">Standard Manual Dispatch</option>
+                    <option value="NONE">No Systematic Routing</option>
+                  </select>
+                </div>
+                <div class="form-group col-span-6">
+                  <label class="form-label" for="veh-payload-util">Average Payload Utilization Factor (%)</label>
+                  <input type="text" class="form-control fld-optional mark-dirty" id="veh-payload-util" name="VEH_PAYLOAD_UTIL" placeholder="e.g. 88.5">
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <span>Section 2B: Environmental Efficiency &amp; Energy Sourcing</span>
+              <span class="breadcrumb-tag">tab_sec_code: VUS-B</span>
+            </div>
+            <div class="card-body">
+              <div class="form-grid-6">
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="veh-energy-metric">Energy Consumption Metric <span class="req-star" aria-hidden="true">*</span></label>
+                  <input type="text" class="form-control fld-required mark-dirty" id="veh-energy-metric" name="VEH_ENERGY_METRIC" placeholder="e.g. 0.32 kWh/km or 6.8 km/l">
+                </div>
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="veh-green-charge-pct">Green / Renewable Energy Charging Share (%)</label>
+                  <input type="text" class="form-control fld-optional mark-dirty" id="veh-green-charge-pct" name="VEH_GREEN_CHARGE_PCT" placeholder="e.g. 45.0">
+                </div>
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="veh-charging-type">Charging &amp; Refueling Infrastructure</label>
+                  <select class="form-control fld-optional mark-dirty" id="veh-charging-type" name="VEH_CHARGING_TYPE">
+                    <option value="" selected disabled>-- Select Option --</option>
+                    <option value="CCS2_DC_FAST">Captive CCS2 DC Fast-Charging Hub</option>
+                    <option value="TYPE2_AC">Type 2 AC Overnight Depot Charging</option>
+                    <option value="BATTERY_SWAP">Automated Battery Swapping Network</option>
+                    <option value="NOT_APPLICABLE">Not Applicable (ICE / Hybrid)</option>
+                  </select>
+                </div>
+                <div class="form-group col-span-12">
+                  <label class="form-label" for="veh-idling-mgmt">Idling Management &amp; Driver Eco-Scoring</label>
+                  <select class="form-control fld-optional mark-dirty" id="veh-idling-mgmt" name="VEH_IDLING_MGMT">
+                    <option value="" selected disabled>-- Select Option --</option>
+                    <option value="TELEMATICS_MONITORED">Telematics Monitored with Driver Incentive Plan</option>
+                    <option value="POLICY_TRAINED">Periodic Eco-Driving Training Only</option>
+                    <option value="NO_POLICY">No Formal Policy</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="kpi-grid">
+                <div class="kpi-micro-card">
+                  <span class="kpi-micro-title">Energy Sourcing Intensity</span>
+                  <span class="kpi-micro-val">0.32 kWh/km (Top Decile)</span>
+                  <span class="kpi-micro-badge pill-green">-42% vs Diesel</span>
+                </div>
+                <div class="kpi-micro-card">
+                  <span class="kpi-micro-title">Annual Carbon Avoidance</span>
+                  <span class="kpi-micro-val">~14.80 tCO2e / Annum</span>
+                  <span class="kpi-micro-badge pill-green">High Abatement</span>
+                </div>
+                <div class="kpi-micro-card">
+                  <span class="kpi-micro-title">Telematics Coverage</span>
+                  <span class="kpi-micro-val">100% Real-time CAN Stream</span>
+                  <span class="kpi-micro-badge pill-blue">IoT Connected</span>
+                </div>
+                <div class="kpi-micro-card">
+                  <span class="kpi-micro-title">Renewable Sourcing</span>
+                  <span class="kpi-micro-val">45% Solar Captive Depot</span>
+                  <span class="kpi-micro-badge pill-blue">Green Power</span>
+                </div>
+                <div class="kpi-micro-card">
+                  <span class="kpi-micro-title">Payload Efficiency</span>
+                  <span class="kpi-micro-val">88.5% Capacity Utilization</span>
+                  <span class="kpi-micro-badge pill-green">Optimized</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ========================================== -->
+        <!-- TAB 3: Compliance & Fleet Health (VEHCOMP) -->
+        <!-- ========================================== -->
+        <div id="veh-tab-comp" class="tab-panel tab-body" role="tabpanel">
+          
+          <!-- Persistent Vehicle Summary Strip -->
+          <div class="card veh-summary-strip">
+            <div class="card-body" style="padding: 10px 18px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+              <div style="display: flex; align-items: center; gap: 12px;">
+                <div style="width: 36px; height: 36px; border-radius: 6px; background: #e0ecfb; display: flex; align-items: center; justify-content: center; font-size: 20px;">🚛</div>
+                <div>
+                  <strong style="color: var(--primary-navy); font-size: 13px;" class="veh-strip-model">—</strong>
+                  <div style="font-size: 11px; color: var(--text-muted);">Reg: <span class="veh-strip-reg" style="font-weight: 600; color: var(--primary-blue);">—</span> | Category: <span class="veh-strip-cat" style="font-weight: 600;">—</span></div>
+                </div>
+              </div>
+              <div style="display: flex; gap: 18px; font-size: 11px; color: var(--text-muted);">
+                <div>Mfg Year: <strong class="veh-strip-year" style="color: var(--text-dark);">—</strong></div>
+                <div>Powertrain: <strong class="veh-strip-fuel" style="color: var(--status-active);">—</strong></div>
+                <div>Asset Class: <strong style="color: var(--primary-navy);">Commercial Fleet</strong></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card" style="margin-bottom: 14px;">
+            <div class="card-header">
+              <span>Section 3A: Statutory &amp; Regulatory Compliance Profile</span>
+              <span class="breadcrumb-tag">tab_sec_code: VCP-A</span>
+            </div>
+            <div class="card-body">
+              <div class="form-grid-6">
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="veh-fitness-valid">Fitness Certificate (FC) Validity <span class="req-star" aria-hidden="true">*</span></label>
+                  <input type="text" class="form-control fld-required mark-dirty" id="veh-fitness-valid" name="VEH_FITNESS_VALID" placeholder="e.g. 2027-11-30">
+                </div>
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="veh-puc-status">PUC / Emission Compliance Status <span class="req-star" aria-hidden="true">*</span></label>
+                  <select class="form-control fld-required mark-dirty" id="veh-puc-status" name="VEH_PUC_STATUS">
+                    <option value="" selected disabled>-- Select Option --</option>
+                    <option value="ACTIVE_VALID">Active &amp; Valid PUC Certificate</option>
+                    <option value="EXEMPTED_EV">Statutorily Exempted (100% Electric EV)</option>
+                    <option value="EXPIRED_RENEWAL_DUE">Expired / Renewal Due (Non-Compliant)</option>
+                  </select>
+                </div>
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="veh-permit-type">Commercial Permit Authorization <span class="req-star" aria-hidden="true">*</span></label>
+                  <select class="form-control fld-required mark-dirty" id="veh-permit-type" name="VEH_PERMIT_TYPE">
+                    <option value="" selected disabled>-- Select Option --</option>
+                    <option value="ALL_INDIA_PERMIT">National Permit (All India Goods Carrier)</option>
+                    <option value="STATE_CARRIER_PERMIT">State Commercial Permit</option>
+                    <option value="LOCAL_MUNICIPAL">Local Municipal Area Authorization</option>
+                  </select>
+                </div>
+                <div class="form-group col-span-6">
+                  <label class="form-label" for="veh-insurance-status">Commercial Vehicle Comprehensive Insurance <span class="req-star" aria-hidden="true">*</span></label>
+                  <select class="form-control fld-required mark-dirty" id="veh-insurance-status" name="VEH_INSURANCE_STATUS">
+                    <option value="" selected disabled>-- Select Option --</option>
+                    <option value="YES_COMPREHENSIVE">Comprehensive All-Risk Package (Zero-Dep)</option>
+                    <option value="THIRD_PARTY_ONLY">Third-Party Liability Only (Sub-Optimal)</option>
+                    <option value="EXPIRED">Expired / Uninsured (High Exposure)</option>
+                  </select>
+                </div>
+                <div class="form-group col-span-6">
+                  <label class="form-label" for="veh-green-tax-status">Green Tax &amp; Scrappage Cess Status</label>
+                  <select class="form-control fld-optional mark-dirty" id="veh-green-tax-status" name="VEH_GREEN_TAX_STATUS">
+                    <option value="" selected disabled>-- Select Option --</option>
+                    <option value="COMPLIANT_ZERO_TAX">Fully Compliant (Zero Green Tax on EV/BS-VI)</option>
+                    <option value="PAID_UP_TO_DATE">Paid Up-to-Date</option>
+                    <option value="PENDING">Arrears Pending / Notice Issued</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <span>Section 3B: Fleet Maintenance &amp; Roadworthiness Index</span>
+              <span class="breadcrumb-tag">tab_sec_code: VCP-B</span>
+            </div>
+            <div class="card-body">
+              <div class="form-grid-6">
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="veh-service-log">OEM Service Schedule Adherence <span class="req-star" aria-hidden="true">*</span></label>
+                  <select class="form-control fld-required mark-dirty" id="veh-service-log" name="VEH_SERVICE_LOG">
+                    <option value="" selected disabled>-- Select Option --</option>
+                    <option value="FULL_OEM_SCHEDULE">100% Authorized OEM Service Center Log</option>
+                    <option value="THIRD_PARTY_GARAGE">Certified Fleet Management Workshop</option>
+                    <option value="AD_HOC">Ad-hoc Unscheduled Maintenance</option>
+                  </select>
+                </div>
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="veh-tire-status">Tire Management &amp; Retreading Efficiency</label>
+                  <select class="form-control fld-optional mark-dirty" id="veh-tire-status" name="VEH_TIRE_STATUS">
+                    <option value="" selected disabled>-- Select Option --</option>
+                    <option value="LOW_ROLLING_RESISTANCE">Low Rolling Resistance (LRR) Eco-Tires</option>
+                    <option value="RETREADED_CERTIFIED">BIS-Certified Retreaded Fleet Tires</option>
+                    <option value="STANDARD_NYLON">Standard Commercial Bias / Nylon Tires</option>
+                  </select>
+                </div>
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="veh-safety-rating">Brake, ADAS &amp; Safety Audit Rating</label>
+                  <select class="form-control fld-optional mark-dirty" id="veh-safety-rating" name="VEH_SAFETY_RATING">
+                    <option value="" selected disabled>-- Select Option --</option>
+                    <option value="GRADE_A_EXCELLENT">Grade A - Full Safety Passing Audit</option>
+                    <option value="GRADE_B_SATISFACTORY">Grade B - Satisfactory Roadworthiness</option>
+                    <option value="REQUIRES_MAINTENANCE">Requires Remedial Mechanical Maintenance</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="kpi-grid">
+                <div class="kpi-micro-card">
+                  <span class="kpi-micro-title">Statutory Fitness</span>
+                  <span class="kpi-micro-val">FC Valid &amp; Active</span>
+                  <span class="kpi-micro-badge pill-green">Fully Compliant</span>
+                </div>
+                <div class="kpi-micro-card">
+                  <span class="kpi-micro-title">Insurance Rating</span>
+                  <span class="kpi-micro-val">Comprehensive Commercial</span>
+                  <span class="kpi-micro-badge pill-green">All-Risk Insured</span>
+                </div>
+                <div class="kpi-micro-card">
+                  <span class="kpi-micro-title">Maintenance Index</span>
+                  <span class="kpi-micro-val">96% OEM Logged Schedule</span>
+                  <span class="kpi-micro-badge pill-blue">High Reliability</span>
+                </div>
+                <div class="kpi-micro-card">
+                  <span class="kpi-micro-title">Safety Inspection</span>
+                  <span class="kpi-micro-val">Grade A Roadworthy</span>
+                  <span class="kpi-micro-badge pill-green">Pass Tier 1</span>
+                </div>
+                <div class="kpi-micro-card">
+                  <span class="kpi-micro-title">Scrappage Risk</span>
+                  <span class="kpi-micro-val">0% End-of-Life Threat</span>
+                  <span class="kpi-micro-badge pill-green">&gt; 12 Yrs Usable Life</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ========================================== -->
+        <!-- TAB 4: Climate & Transition Risk (VEHCLIM) -->
+        <!-- ========================================== -->
+        <div id="veh-tab-clim" class="tab-panel tab-body" role="tabpanel">
+          
+          <!-- Persistent Vehicle Summary Strip -->
+          <div class="card veh-summary-strip">
+            <div class="card-body" style="padding: 10px 18px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+              <div style="display: flex; align-items: center; gap: 12px;">
+                <div style="width: 36px; height: 36px; border-radius: 6px; background: #e0ecfb; display: flex; align-items: center; justify-content: center; font-size: 20px;">🚛</div>
+                <div>
+                  <strong style="color: var(--primary-navy); font-size: 13px;" class="veh-strip-model">—</strong>
+                  <div style="font-size: 11px; color: var(--text-muted);">Reg: <span class="veh-strip-reg" style="font-weight: 600; color: var(--primary-blue);">—</span> | Category: <span class="veh-strip-cat" style="font-weight: 600;">—</span></div>
+                </div>
+              </div>
+              <div style="display: flex; gap: 18px; font-size: 11px; color: var(--text-muted);">
+                <div>Mfg Year: <strong class="veh-strip-year" style="color: var(--text-dark);">—</strong></div>
+                <div>Powertrain: <strong class="veh-strip-fuel" style="color: var(--status-active);">—</strong></div>
+                <div>Asset Class: <strong style="color: var(--primary-navy);">Commercial Fleet</strong></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card" style="margin-bottom: 14px;">
+            <div class="card-header">
+              <span>Section 4A: Physical Climate Hazards &amp; Operational Vulnerability</span>
+              <span class="breadcrumb-tag">tab_sec_code: VTR-A</span>
+            </div>
+            <div class="card-body">
+              <div class="form-grid-6">
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="veh-flood-risk">Urban Waterlogging &amp; Flood Exposure <span class="req-star" aria-hidden="true">*</span></label>
+                  <select class="form-control fld-required mark-dirty" id="veh-flood-risk" name="VEH_FLOOD_RISK">
+                    <option value="" selected disabled>-- Select Option --</option>
+                    <option value="LOW_ELEVATED_ROUTES">Low - High-Elevation &amp; Expressway Routes</option>
+                    <option value="MODERATE_SEASONAL_WATERLOG">Moderate - Seasonal Urban Waterlogging</option>
+                    <option value="HIGH_COASTAL_FLOOD">High - Coastal Lowland / Inundation Zone</option>
+                  </select>
+                </div>
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="veh-heat-risk">Extreme Heat &amp; Thermal Operating Range <span class="req-star" aria-hidden="true">*</span></label>
+                  <select class="form-control fld-required mark-dirty" id="veh-heat-risk" name="VEH_HEAT_RISK">
+                    <option value="" selected disabled>-- Select Option --</option>
+                    <option value="ACTIVE_LIQUID_COOLING">Active Liquid Cooling &amp; HVAC Management</option>
+                    <option value="PASSIVE_AIR_COOLED">Passive Air Cooling with BMS Safety Trip</option>
+                    <option value="NO_THERMAL_MGMT">Standard Air-Cooled (High Degradation Risk)</option>
+                  </select>
+                </div>
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="veh-ip-rating">Powertrain Ingress Protection (IP Rating)</label>
+                  <select class="form-control fld-optional mark-dirty" id="veh-ip-rating" name="VEH_IP_RATING">
+                    <option value="" selected disabled>-- Select Option --</option>
+                    <option value="IP67_POWERTRAIN">IP67 Waterproof &amp; Dustproof Certified</option>
+                    <option value="IP65_STANDARD">IP65 Standard Splash Resistant</option>
+                    <option value="UNRATED">Unrated (Standard Enclosure)</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <span>Section 4B: Transition Risk, Policy &amp; ZEV Mandates</span>
+              <span class="breadcrumb-tag">tab_sec_code: VTR-B</span>
+            </div>
+            <div class="card-body">
+              <div class="form-grid-6">
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="veh-lez-access">Low Emission Zone (LEZ) &amp; City Access <span class="req-star" aria-hidden="true">*</span></label>
+                  <select class="form-control fld-required mark-dirty" id="veh-lez-access" name="VEH_LEZ_ACCESS">
+                    <option value="" selected disabled>-- Select Option --</option>
+                    <option value="UNRESTRICTED_ZEV">Unrestricted 24x7 Access (ZEV / Green EV)</option>
+                    <option value="RESTRICTED_PEAK_HOURS">Restricted Peak-Hour Access (BS-VI Clean)</option>
+                    <option value="BANNED_NON_BS6">High Risk of City-Center Ban (Older ICE)</option>
+                  </select>
+                </div>
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="veh-fuel-volatility">Fossil Fuel Volatility Vulnerability <span class="req-star" aria-hidden="true">*</span></label>
+                  <select class="form-control fld-required mark-dirty" id="veh-fuel-volatility" name="VEH_FUEL_VOLATILITY">
+                    <option value="" selected disabled>-- Select Option --</option>
+                    <option value="IMMUNE_ZERO_FOSSIL">Immune (100% Electric - Zero Direct Fuel Exposure)</option>
+                    <option value="MODERATE_HEDGE">Moderate (CNG / Hybrid Fuel Hedging)</option>
+                    <option value="HIGH_DIESEL_DEPENDENT">High Vulnerability (Pure Diesel Fleet)</option>
+                  </select>
+                </div>
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="veh-fleet-roadmap">Fleet Net-Zero &amp; Decarbonization Policy</label>
+                  <select class="form-control fld-optional mark-dirty" id="veh-fleet-roadmap" name="VEH_FLEET_ROADMAP">
+                    <option value="" selected disabled>-- Select Option --</option>
+                    <option value="SCIENCE_BASED_TARGETS_ALIGNED">SBTi-Aligned Net-Zero Transition Target</option>
+                    <option value="INTERNAL_NET_ZERO_2030">Corporate Fleet Electrification Policy 2030</option>
+                    <option value="AD_HOC">No Formal Transition Strategy</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="kpi-grid">
+                <div class="kpi-micro-card">
+                  <span class="kpi-micro-title">LEZ City Access</span>
+                  <span class="kpi-micro-val">100% Unrestricted Green Pass</span>
+                  <span class="kpi-micro-badge pill-green">Zero Fines</span>
+                </div>
+                <div class="kpi-micro-card">
+                  <span class="kpi-micro-title">Water Ingress Rating</span>
+                  <span class="kpi-micro-val">IP67 Submersion Certified</span>
+                  <span class="kpi-micro-badge pill-green">High Resilience</span>
+                </div>
+                <div class="kpi-micro-card">
+                  <span class="kpi-micro-title">Fuel Spike Hedge</span>
+                  <span class="kpi-micro-val">92 / 100 Insulation Score</span>
+                  <span class="kpi-micro-badge pill-green">Low Opex Volatility</span>
+                </div>
+                <div class="kpi-micro-card">
+                  <span class="kpi-micro-title">Transition Threat</span>
+                  <span class="kpi-micro-val">Protected (Clean Asset Class)</span>
+                  <span class="kpi-micro-badge pill-blue">Future-Proof</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ========================================== -->
+        <!-- TAB 5: Battery & Circularity (VEHSUST) -->
+        <!-- ========================================== -->
+        <div id="veh-tab-sust" class="tab-panel tab-body" role="tabpanel">
+          
+          <!-- Persistent Vehicle Summary Strip -->
+          <div class="card veh-summary-strip">
+            <div class="card-body" style="padding: 10px 18px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+              <div style="display: flex; align-items: center; gap: 12px;">
+                <div style="width: 36px; height: 36px; border-radius: 6px; background: #e0ecfb; display: flex; align-items: center; justify-content: center; font-size: 20px;">🚛</div>
+                <div>
+                  <strong style="color: var(--primary-navy); font-size: 13px;" class="veh-strip-model">—</strong>
+                  <div style="font-size: 11px; color: var(--text-muted);">Reg: <span class="veh-strip-reg" style="font-weight: 600; color: var(--primary-blue);">—</span> | Category: <span class="veh-strip-cat" style="font-weight: 600;">—</span></div>
+                </div>
+              </div>
+              <div style="display: flex; gap: 18px; font-size: 11px; color: var(--text-muted);">
+                <div>Mfg Year: <strong class="veh-strip-year" style="color: var(--text-dark);">—</strong></div>
+                <div>Powertrain: <strong class="veh-strip-fuel" style="color: var(--status-active);">—</strong></div>
+                <div>Asset Class: <strong style="color: var(--primary-navy);">Commercial Fleet</strong></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card" style="margin-bottom: 14px;">
+            <div class="card-header">
+              <span>Section 5A: Traction Battery Chemistry &amp; Health State</span>
+              <span class="breadcrumb-tag">tab_sec_code: VST-A</span>
+            </div>
+            <div class="card-body">
+              <div class="form-grid-6">
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="veh-battery-chem">Traction Battery Chemistry <span class="req-star" aria-hidden="true">*</span></label>
+                  <select class="form-control fld-required mark-dirty" id="veh-battery-chem" name="VEH_BATTERY_CHEM">
+                    <option value="" selected disabled>-- Select Option --</option>
+                    <option value="LFP_LITHIUM_FERRO_PHOSPHATE">Lithium Iron Phosphate (LFP - High Thermal Safety)</option>
+                    <option value="NMC_NICKEL_MANGANESE">Nickel Manganese Cobalt (NMC - High Density)</option>
+                    <option value="SOLID_STATE">Solid-State Advanced Cell</option>
+                    <option value="NOT_APPLICABLE_ICE">Not Applicable (ICE Conventional)</option>
+                  </select>
+                </div>
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="veh-battery-soh">Battery State of Health (SOH) (%)</label>
+                  <input type="text" class="form-control fld-optional mark-dirty" id="veh-battery-soh" name="VEH_BATTERY_SOH" placeholder="e.g. 94.5">
+                </div>
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="veh-btms">Battery Thermal Management System (BTMS) <span class="req-star" aria-hidden="true">*</span></label>
+                  <select class="form-control fld-required mark-dirty" id="veh-btms" name="VEH_BTMS">
+                    <option value="" selected disabled>-- Select Option --</option>
+                    <option value="LIQUID_COOLED_ACTIVE">Active Closed-Loop Liquid Glycol Cooling</option>
+                    <option value="PHASE_CHANGE_MATERIAL">Phase Change Material (PCM) Advanced Matrix</option>
+                    <option value="AIR_COOLED_PASSIVE">Forced Air Cooling (Depot Ambient)</option>
+                  </select>
+                </div>
+                <div class="form-group col-span-12">
+                  <label class="form-label" for="veh-second-life">Second-Life Battery Repurposing &amp; Storage Contract</label>
+                  <select class="form-control fld-optional mark-dirty" id="veh-second-life" name="VEH_SECOND_LIFE">
+                    <option value="" selected disabled>-- Select Option --</option>
+                    <option value="BUYBACK_OEM_CONTRACT">Guaranteed OEM Buyback &amp; Recycling Agreement</option>
+                    <option value="GRID_STORAGE_REPURPOSE">Stationary Energy Storage System (BESS) Second Life</option>
+                    <option value="NO_PLAN">No Formal Circularity Plan</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <span>Section 5B: End-of-Life Vehicle (ELV) &amp; Circularity</span>
+              <span class="breadcrumb-tag">tab_sec_code: VST-B</span>
+            </div>
+            <div class="card-body">
+              <div class="form-grid-6">
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="veh-rvsf-tieup">Registered Vehicle Scrapping Facility (RVSF) Tie-Up <span class="req-star" aria-hidden="true">*</span></label>
+                  <select class="form-control fld-required mark-dirty" id="veh-rvsf-tieup" name="VEH_RVSF_TIEUP">
+                    <option value="" selected disabled>-- Select Option --</option>
+                    <option value="CONTRACTED_RVSF_PARTNER">Contracted with MoRTH-Authorized RVSF Partner</option>
+                    <option value="INFORMAL_MARKET">Informal Scrap Market (High Regulatory Risk)</option>
+                    <option value="NO_RETIREMENT_PLAN">No Active Fleet Scrapping / Salvage Plan</option>
+                  </select>
+                </div>
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="veh-recyclability-pct">Target Vehicle Recyclability (% by Weight)</label>
+                  <input type="text" class="form-control fld-optional mark-dirty" id="veh-recyclability-pct" name="VEH_RECYCLABILITY_PCT" placeholder="e.g. 85.0">
+                </div>
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="veh-material-trace">Critical Mineral Traceability &amp; Ethics</label>
+                  <select class="form-control fld-optional mark-dirty" id="veh-material-trace" name="VEH_MATERIAL_TRACE">
+                    <option value="" selected disabled>-- Select Option --</option>
+                    <option value="CERTIFIED_RESPONSIBLE_SOURCING">Certified Conflict-Free Responsible Sourcing</option>
+                    <option value="PARTIAL_CHAIN">Partial Chain-of-Custody Certification</option>
+                    <option value="UNVERIFIED">Unverified Supply Chain</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="kpi-grid">
+                <div class="kpi-micro-card">
+                  <span class="kpi-micro-title">Battery Health (SOH)</span>
+                  <span class="kpi-micro-val">94.5% Retention</span>
+                  <span class="kpi-micro-badge pill-green">Optimal Health</span>
+                </div>
+                <div class="kpi-micro-card">
+                  <span class="kpi-micro-title">Circularity Index</span>
+                  <span class="kpi-micro-val">85% Recoverable Material</span>
+                  <span class="kpi-micro-badge pill-green">High Recyclability</span>
+                </div>
+                <div class="kpi-micro-card">
+                  <span class="kpi-micro-title">RVSF Authorized Tie-Up</span>
+                  <span class="kpi-micro-val">MoRTH Partner Active</span>
+                  <span class="kpi-micro-badge pill-green">Compliant Scrap</span>
+                </div>
+                <div class="kpi-micro-card">
+                  <span class="kpi-micro-title">Mineral Stewardship</span>
+                  <span class="kpi-micro-val">Responsible Sourcing Verified</span>
+                  <span class="kpi-micro-badge pill-blue">ESG Certified</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ========================================== -->
+        <!-- TAB 6: Scoring & Valuation Output (VEHSUM) -->
+        <!-- ========================================== -->
+        <div id="veh-tab-sum" class="tab-panel tab-body" role="tabpanel">
+          <div class="card" style="margin-bottom: 14px;">
+            <div class="card-header">
+              <span>Section 6: Comprehensive Vehicle ESG Score &amp; Valuation Output</span>
+              <span class="breadcrumb-tag">tab_sec_code: VOUT</span>
+            </div>
+            <div class="card-body">
+              <div class="score-card-summary">
+                <div class="score-box">
+                  <div class="score-box-title">Composite Collateral ESG Score</div>
+                  <div class="score-box-val" style="color: var(--primary-blue);">78.10 / 100.00</div>
+                  <span class="pill-badge pill-green" style="margin-top: 6px;">Top Fleet Quartile</span>
+                </div>
+                <div class="score-box">
+                  <div class="score-box-title">Collateral Sustainability Grade</div>
+                  <div class="score-box-val" style="color: var(--status-active);">Grade B+ (Low Risk)</div>
+                  <span class="pill-badge pill-blue" style="margin-top: 6px;">Clean Transition Approved</span>
+                </div>
+                <div class="score-box">
+                  <div class="score-box-title">Recommended ESG Valuation Haircut</div>
+                  <div class="score-box-val" style="color: var(--primary-navy);">- 5.00 %</div>
+                  <span class="pill-badge pill-grey" style="margin-top: 6px;">Minimal Capital Buffer</span>
+                </div>
+              </div>
+
+              <div class="card" style="margin-bottom: 14px;">
+                <div class="card-header">
+                  <strong>Section-Wise Weighted Score Breakdown (100% Total)</strong>
+                </div>
+                <div class="card-body no-pad table-scroll">
+                  <table class="data-table">
+                    <thead>
+                      <tr>
+                        <th>Assessment Pillar</th>
+                        <th>Standard Weight</th>
+                        <th>Raw Score (/100)</th>
+                        <th>Weighted Contribution</th>
+                        <th>Risk Assessment Band</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td><strong>Section 1: Identification &amp; Technical Vintage</strong></td>
+                        <td>15.00 %</td>
+                        <td>88.00</td>
+                        <td>13.20 %</td>
+                        <td><span class="pill-badge pill-green">Very Low Risk</span></td>
+                      </tr>
+                      <tr>
+                        <td><strong>Section 2: Operational Usage &amp; Energy Efficiency</strong></td>
+                        <td>25.00 %</td>
+                        <td>82.00</td>
+                        <td>20.50 %</td>
+                        <td><span class="pill-badge pill-green">Low Risk / High Efficiency</span></td>
+                      </tr>
+                      <tr>
+                        <td><strong>Section 3: Statutory Compliance &amp; Fleet Health</strong></td>
+                        <td>20.00 %</td>
+                        <td>80.00</td>
+                        <td>16.00 %</td>
+                        <td><span class="pill-badge pill-green">Compliant</span></td>
+                      </tr>
+                      <tr>
+                        <td><strong>Section 4: Climate Hazards &amp; Transition Policy</strong></td>
+                        <td>20.00 %</td>
+                        <td>72.00</td>
+                        <td>14.40 %</td>
+                        <td><span class="pill-badge pill-blue">Moderate-Low Risk</span></td>
+                      </tr>
+                      <tr>
+                        <td><strong>Section 5: Battery Health &amp; Circularity</strong></td>
+                        <td>20.00 %</td>
+                        <td>70.00</td>
+                        <td>14.00 %</td>
+                        <td><span class="pill-badge pill-blue">Moderate Risk</span></td>
+                      </tr>
+                      <tr style="background: #f8fbff; font-weight: 700;">
+                        <td><strong>Total Composite ESG Index</strong></td>
+                        <td>100.00 %</td>
+                        <td>—</td>
+                        <td>78.10 %</td>
+                        <td><span class="pill-badge pill-green">Grade B+ (Low Risk)</span></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div class="card" style="margin-bottom: 14px;">
+                <div class="card-header">
+                  <strong>Collateral Valuation Impact &amp; Loan Adjustment</strong>
+                </div>
+                <div class="card-body no-pad table-scroll">
+                  <table class="data-table">
+                    <thead>
+                      <tr>
+                        <th>Valuation Parameter</th>
+                        <th>Financial Baseline (INR)</th>
+                        <th>ESG Factor Applied</th>
+                        <th>Adjusted Collateral Value (INR)</th>
+                        <th>Remarks / Policy Rationale</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td>Base Authoritative Appraised Value</td>
+                        <td style="font-weight: 600;">₹ 24,00,000.00</td>
+                        <td>Baseline (100.0%)</td>
+                        <td style="font-weight: 600;">₹ 24,00,000.00</td>
+                        <td>Certified Independent Mechanical Appraisal</td>
+                      </tr>
+                      <tr>
+                        <td>ESG Risk Adjustment / Haircut</td>
+                        <td style="color: #991b1b;">- ₹ 1,20,000.00</td>
+                        <td style="color: #991b1b; font-weight: 700;">- 5.00 %</td>
+                        <td style="color: #991b1b; font-weight: 700;">- ₹ 1,20,000.00</td>
+                        <td>Battery Aging &amp; Transition Buffer</td>
+                      </tr>
+                      <tr style="background: #eef8f2; font-weight: 800;">
+                        <td><strong>Final ESG-Adjusted Collateral Value</strong></td>
+                        <td>—</td>
+                        <td><strong>95.00 % Retention</strong></td>
+                        <td style="color: #0d6e47; font-size: 14px;"><strong>₹ 22,80,000.00</strong></td>
+                        <td><span class="pill-badge pill-green">Authoritative Collateral Base</span></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div class="card" style="margin-bottom: 18px;">
+                <div class="card-header">
+                  <strong>Key ESG Risk Matrix &amp; Recommended Mitigations</strong>
+                </div>
+                <div class="card-body" style="font-size: 12px; line-height: 1.6;">
+                  <ul style="padding-left: 18px; margin: 0; color: var(--text-dark);">
+                    <li><strong>Battery Degradation Risk:</strong> Current SOH is 94.5%. Recommend mandatory telematics-based battery impedance monitoring at 6-month intervals.</li>
+                    <li><strong>Extreme Weather Operation:</strong> Liquid cooling active system reduces thermal runaway risk; enforce depot shade charging during summer heatwaves.</li>
+                    <li><strong>Fleet Modernization Mandate:</strong> Vehicle complies with zero-emission mandates for urban logistics, providing a 10-year regulatory buffer.</li>
+                  </ul>
+                </div>
+              </div>
+
+              <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 20px;">
+                <button type="button" class="btn btn-secondary" onclick="closeVehicleFormToSearch()">Return to Register</button>
+                <button type="button" class="btn btn-primary" onclick="submitVehicleAssessment()">Submit for Checker Approval</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Shared Bottom Sign-off Action Bar -->
+        <div id="veh-signoff-bar" class="signoff-bar signoff-unified" hidden>
+          <span class="field-hint js-guidance"></span>
+          <span class="signoff-actions">
+            <button class="btn btn-secondary js-cancel-btn" type="button" disabled onclick="cancelActiveTabChanges()">Cancel Changes</button>
+            <button class="btn btn-primary js-signoff-btn" type="button" disabled onclick="signOffActiveTab()">Sign Off Section 1</button>
+            <button class="btn btn-secondary js-reopen-btn" type="button" onclick="reopenActiveTab()" hidden>Re-open Section</button>
+          </span>
+        </div>
+
+      </section>
+
+      <section id="view-admin-cvm" class="admin-screen" aria-label="Administration: Code Value Master" hidden>
+        <div class="card shadow-sm border-0 mb-4">
+          <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+            <h5 class="mb-0"><i class="bi bi-gear-fill me-2"></i>Code Value Master Maintenance</h5>
+            <div class="d-flex gap-2">
+              <button id="btnNewCategory" type="button" class="btn btn-outline-primary btn-sm" onclick="openCvmCategoryModal()">+ New Category</button>
+              <button id="btnEditCategory" type="button" class="btn btn-outline-secondary btn-sm" onclick="openCvmCategoryModal(document.getElementById('filter-mstr-code').value)" disabled>Edit Category</button>
+              <button id="btnAddNewValue" type="button" class="btn btn-primary btn-sm" onclick="openCvmModal()"><i class="bi bi-plus-lg"></i> Add New Value</button>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="row g-3 mb-3">
+              <div class="col-md-4">
+                <label class="form-label small fw-bold" for="filter-mstr-code">Master Category</label>
+                <select id="filter-mstr-code" class="form-select form-select-sm" onchange="loadCvmList()">
+                  <option value="">-- All Categories --</option>
+                </select>
+              </div>
+              <div class="col-md-3">
+                <label class="form-label small fw-bold" for="filter-status">Status</label>
+                <select id="filter-status" class="form-select form-select-sm" onchange="loadCvmList()">
+                  <option value="ACTIVE" selected>Active</option>
+                  <option value="INACTIVE">Inactive</option>
+                  <option value="">All</option>
+                </select>
+              </div>
+              <div class="col-md-5">
+                <label class="form-label small fw-bold" for="filter-search">Search Code or Name</label>
+                <input type="text" id="filter-search" class="form-control form-select-sm" placeholder="e.g. STAR_4, LEED" onkeyup="loadCvmList()" />
+              </div>
+            </div>
+
+            <div class="table-responsive">
+              <table class="table table-hover table-bordered align-middle text-nowrap">
+                <thead class="table-light">
+                  <tr>
+                    <th>Master Code</th>
+                    <th>Code</th>
+                    <th>Display Name</th>
+                    <th>Has Parent</th>
+                    <th>Parent Master</th>
+                    <th>Effective Range</th>
+                    <th>Status</th>
+                    <th class="text-center">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="tbl-cvm-rows"></tbody>
+              </table>
+            </div>
+            <div class="grid-pager" id="cvm-pager"></div>
+          </div>
+        </div>
+
+        <div class="modal fade cvm-modal" id="modal-cvm" tabindex="-1" role="dialog" aria-labelledby="modal-title" aria-modal="true">
+          <div class="modal-dialog modal-lg">
+            <form id="form-cvm" novalidate onsubmit="saveCvmRecord(event)">
+              <div class="modal-content">
+                <div class="modal-header">
+                  <h5 class="modal-title" id="modal-title">Maintain Code Value</h5>
+                  <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                  <input type="hidden" id="cvm-rec-id" />
+                  <div id="cvm-form-fields" class="cvm-form-grid"></div>
+                </div>
+                <div class="modal-footer">
+                  <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                  <button type="submit" class="btn btn-primary">Save Value</button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <div class="modal fade cvm-modal" id="modal-cvm-mst" tabindex="-1" role="dialog" aria-labelledby="modal-cvm-mst-title" aria-modal="true">
+          <div class="modal-dialog modal-lg">
+            <form id="form-cvm-mst" novalidate onsubmit="saveCvmCategory(event)">
+              <div class="modal-content">
+                <div class="modal-header">
+                  <h5 class="modal-title" id="modal-cvm-mst-title">New Category</h5>
+                  <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                  <input type="hidden" id="cvm-mst-original-code" />
+                  <div id="cvm-mst-form-fields" class="cvm-form-grid"></div>
+                </div>
+                <div class="modal-footer">
+                  <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                  <button type="submit" class="btn btn-primary">Save Category</button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      </section>
+
+      <section id="view-admin-rubric" class="admin-screen" aria-label="ESG Scoring Model Maintenance" hidden>
+        <div class="card shadow-sm border-0 mb-4">
+          <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+            <div class="d-flex align-items-center gap-2">
+              <button id="btnRubricBack" type="button" class="btn btn-outline-light btn-sm" onclick="navigateMenu('SEARCH')" aria-label="Back to search"><i class="bi bi-arrow-left"></i> Back</button>
+              <h5 class="mb-0"><i class="bi bi-sliders me-2"></i>ESG Scoring Model Maintenance</h5>
+            </div>
+            <div class="d-flex gap-2">
+              <button id="btnManageSectionWeights" type="button" class="btn btn-light btn-sm" onclick="navigateMenu('ADMIN_SECTION_WEIGHTS')">Manage Section Weights</button>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="row g-2 align-items-end mb-3">
+              <div class="col-md-4">
+                <label class="form-label small fw-bold" for="filter-rubric-coll-type">Collateral Type</label>
+                <select id="filter-rubric-coll-type" class="form-select form-select-sm" aria-label="Filter by collateral type" onchange="loadRubricList()"></select>
+              </div>
+            </div>
+            <div class="table-responsive">
+              <table class="table table-hover table-bordered align-middle text-nowrap">
+                <thead class="table-light">
+                  <tr>
+                    <th class="text-center rubric-col-actions">Actions</th>
+                    <th>Collateral Type</th>
+                    <th>Section / Category</th>
+                    <th>Attr Code</th>
+                    <th>Match Operator</th>
+                    <th>Criteria / Value</th>
+                    <th>Base Score</th>
+                    <th>Weight %</th>
+                    <th>Status</th>
+                    <th>Model Version</th>
+                  </tr>
+                  <tr class="rubric-filter-row">
+                    <th class="rubric-col-actions"></th>
+                    <th></th>
+                    <th></th>
+                    <th><input type="text" id="filter-rubric-attr-code" class="form-control form-control-sm" placeholder="Attr code" aria-label="Filter by attr code" oninput="rubricScheduleFilterLoad()" /></th>
+                    <th>
+                      <select id="filter-rubric-match-operator" class="form-select form-select-sm" aria-label="Filter by match operator" onchange="loadRubricList()">
+                        <option value="">All</option>
+                        <option value="EQUALS">EQUALS</option>
+                        <option value="BETWEEN">BETWEEN</option>
+                        <option value="CONTAINS">CONTAINS</option>
+                        <option value="STARTS_WITH">STARTS_WITH</option>
+                      </select>
+                    </th>
+                    <th></th>
+                    <th></th>
+                    <th></th>
+                    <th>
+                      <select id="filter-rubric-status" class="form-select form-select-sm" aria-label="Filter by status" onchange="loadRubricList()">
+                        <option value="">All</option>
+                        <option value="ACTIVE" selected>ACTIVE</option>
+                        <option value="INACTIVE">INACTIVE</option>
+                      </select>
+                    </th>
+                    <th><input type="text" id="filter-rubric-model-version" class="form-control form-control-sm" placeholder="Model version" aria-label="Filter by model version" oninput="rubricScheduleFilterLoad()" /></th>
+                  </tr>
+                </thead>
+                <tbody id="tbl-rubric-rows"></tbody>
+              </table>
+            </div>
+            <div class="grid-pager" id="rubric-pager"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="view-admin-section-weights" class="admin-screen" aria-label="ESG Section Weights" hidden>
+        <div class="card shadow-sm border-0 mb-4">
+          <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+            <div class="d-flex align-items-center gap-2">
+              <button id="btnSectionWeightsBack" type="button" class="btn btn-outline-light btn-sm" onclick="navigateMenu('ADMIN_RUBRIC')" aria-label="Back to ESG Scoring Model"><i class="bi bi-arrow-left"></i> Back</button>
+              <h5 class="mb-0"><i class="bi bi-percent me-2"></i>ESG Section Weights</h5>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="row g-2 align-items-end mb-3">
+              <div class="col-md-4">
+                <label class="form-label small fw-bold" for="filter-section-coll-type">Collateral Type</label>
+                <select id="filter-section-coll-type" class="form-select form-select-sm" aria-label="Filter by collateral type" onchange="sectionWeightsOnCollTypeChange()"></select>
+              </div>
+            </div>
+            <div id="section-weight-total" class="alert alert-secondary py-2 mb-3" role="status" aria-live="polite"></div>
+            <div class="table-responsive">
+              <table class="table table-hover table-bordered align-middle">
+                <thead class="table-light">
+                  <tr>
+                    <th>ESG Section Code</th>
+                    <th>ESG Section Name</th>
+                    <th>Section Weight % to ESG Grade</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="tbl-section-weight-rows"></tbody>
+              </table>
+            </div>
+            <div class="grid-pager" id="section-weight-pager"></div>
+            <div class="d-flex justify-content-end mt-3">
+              <button id="btnSaveSectionWeights" type="button" class="btn btn-primary btn-sm" disabled onclick="sectionWeightsSave()">Save Section Weights</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+
+    </div>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <!-- Unsaved changes warning -->
+  <div id="dirty-modal" class="dirty-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="dirty-modal-title" hidden>
+    <div class="dirty-modal-card">
+      <h3 id="dirty-modal-title">Unsaved Changes</h3>
+      <p>You have modified data in this section. If you switch tabs without saving, these changes will not be committed to draft.</p>
+      <div class="modal-actions">
+        <button class="btn btn-quiet" type="button" onclick="cancelTabSwitch()">Cancel</button>
+        <button class="btn btn-secondary" type="button" onclick="confirmDiscardAndSwitch()">Discard &amp; Continue</button>
+        <button class="btn btn-primary" type="button" onclick="confirmSaveAndSwitch()">Save &amp; Continue</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/esg-navigation.js"></script>
+  <script src="vendor/tom-select/tom-select.complete.min.js"></script>
+  <script src="js/admin/cvm-service.js"></script>
+  <script src="js/admin/rubric-service.js"></script>
+  <script src="js/admin/section-weight-service.js"></script>
+</body>
+</html>

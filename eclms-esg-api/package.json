@@ -1,0 +1,15 @@
+{
+  "name": "eclms-esg-api",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ECLMS 2.0 ESG API: Code Value Master endpoints on PostgreSQL, serving the eclms-esg-web prototype",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "license": "UNLICENSED",
+  "dependencies": {
+    "express": "^4.22.3",
+    "pg": "^8.23.1"
+  }
+}
