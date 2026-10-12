@@ -1,5 +1,12 @@
 .app-shell { display: flex; width: 100%; min-width: 0; min-height: 0; }
 
+.dev-debug-meta, [data-meta-debug] { display: none !important; }
+.btn-back-search { min-height: 38px; padding: 8px 16px; font-weight: 500; }
+.gis-derived-badge { color: #64748b; font-size: 10px; font-weight: 500; }
+.score-validation-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 14px; }
+.score-alert { flex-basis: 100%; padding: 10px 14px; border: 1px solid #fde68a; border-radius: 4px; background: #fffbeb; color: #92400e; }
+.form-tab-btn:disabled { cursor: not-allowed; opacity: .55; }
+
 .sidebar {
   display: flex;
   width: 260px;

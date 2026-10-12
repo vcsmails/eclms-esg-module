@@ -5,7 +5,8 @@
   "description": "ECLMS 2.0 ESG API: Code Value Master endpoints on PostgreSQL, serving the eclms-esg-web prototype",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node --test tests/assessment-wiring.test.js"
   },
   "license": "UNLICENSED",
   "dependencies": {

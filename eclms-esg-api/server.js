@@ -34,6 +34,7 @@ app.use("/api/admin/rubric", createRubricRouter(pool));
 app.use("/api/admin/section-weights", createSectionWeightRouter(pool));
 app.use("/api/admin/grade-haircuts", createGradeHaircutRouter(pool));
 app.use("/api/assessment", createAssessmentRouter(pool));
+app.use("/api/collateral", createAssessmentRouter.createCollateralRouter(pool));
 app.use("/api/cvm", createCvmLookupRouter(pool));
 
 app.use("/api", (req, res) => {

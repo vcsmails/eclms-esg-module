@@ -64,8 +64,6 @@
       <div class="top-heading" id="header-assessment-title">Global Collateral Master Register</div>
       <div class="top-actions" id="top-bar-actions" hidden>
         <span class="draft-status" id="draft-status" role="status" aria-live="polite"></span>
-        <button class="btn btn-secondary" type="button" onclick="saveActiveSectionDraft()">Save Draft</button>
-        <button class="btn btn-primary" type="button" onclick="validateAndProceed()">Validate &amp; Proceed</button>
       </div>
     </header>
 
@@ -85,15 +83,12 @@
                 <input type="search" class="form-control fld-optional" id="coll-live-search" placeholder="Type ID or Name (e.g. MUM-8921)...">
               </div>
               <div class="form-group">
-                <label class="form-label" for="filter-asset-type">Asset Classification</label>
+                <label class="form-label" for="filter-asset-type">Collateral Type</label>
                 <select class="form-control fld-optional" id="filter-asset-type" onchange="applyInstantGridFilter()">
-                  <option value="ALL">All Classifications</option>
-                  <option value="COMMERCIAL_OFFICE">Commercial Office Complex</option>
-                  <option value="RESIDENTIAL">Residential Apartment / House</option>
-                  <option value="INDUSTRIAL">Industrial Building / Factory</option>
-                  <option value="WAREHOUSE">Warehouse / Logistics Park</option>
-                  <option value="MANUFACTURING_HEAVY">Metals &amp; Heavy Materials Plant</option>
-                  <option value="COMMERCIAL_VEHICLE">Commercial Fleet - LCV Trucks</option>
+                  <option value="ALL">All Collateral Types</option>
+                  <option value="PROP">Property</option>
+                  <option value="MANU">Manufacturing Plant</option>
+                  <option value="VEH">Vehicle Fleet</option>
                 </select>
               </div>
               <button class="btn btn-secondary" type="button" onclick="resetLiveFilters()">Clear</button>
@@ -112,11 +107,11 @@
                 <tr>
                   <th class="col-action">Action</th>
                   <th>Collateral Reference ID</th>
-                  <th>Property Name</th>
-                  <th>Classification</th>
-                  <th>Location</th>
-                  <th>Appraised Value</th>
-                  <th>Status</th>
+                  <th>Collateral Name</th>
+                  <th>Collateral Type</th>
+                  <th>ESG Haircut</th>
+                  <th>Stored ESG-Adjusted Value</th>
+                  <th>Assessment Status</th>
                 </tr>
               </thead>
               <tbody id="collateral-grid-body"></tbody>
@@ -134,9 +129,8 @@
             <div>
               <strong class="banner-name" id="banner-prop-name"></strong>
               <span class="breadcrumb-tag" id="banner-coll-id"></span>
-              <span class="breadcrumb-tag tag-info" id="banner-template-code">TEMPLATE: FRM_PROP</span>
             </div>
-            <button class="btn btn-secondary btn-sm" type="button" onclick="closeFormToSearch()">← Back to Search</button>
+            <button id="btn-back-to-search" class="btn btn-secondary btn-back-search" type="button" onclick="closeFormToSearch()">← Back to Search</button>
           </div>
         </div>
 
@@ -155,7 +149,7 @@
           <div class="card">
             <div class="card-header">
               <span>Section 1: Property Context &amp; Localization (PRPLOC)</span>
-              <span><span class="pill-badge pill-grey" id="s1-signoff-status">Not signed off</span> <span class="breadcrumb-tag">tab_sec_code: PCT</span></span>
+              <span class="pill-badge pill-grey" id="s1-signoff-status" hidden>Not signed off</span>
             </div>
             <div class="card-body">
               <div class="form-grid-6">
@@ -171,15 +165,6 @@
                 <div class="form-group col-span-3">
                   <label class="form-label" for="pct-version">Assessment Version</label>
                   <input type="text" class="form-control fld-derived" id="pct-version" name="ASSESSMENT_VERSION" value="Ver 1 (Current)" readonly>
-                </div>
-                <div class="form-group col-span-3">
-                  <label class="form-label" for="fld-asmt-type">Assessment Type <span class="req-star" title="Required" aria-hidden="true">*</span></label>
-                  <select class="form-control fld-required mark-dirty" id="fld-asmt-type" name="ASSESSMENT_TYPE">
-                    <option value="" selected disabled>-- Select Option --</option>
-                    <option value="INITIAL">Initial Collateral Onboarding</option>
-                    <option value="PERIODIC">Periodic Annual Review</option>
-                    <option value="TRIGGER_BASED">Trigger-Based Event Review</option>
-                  </select>
                 </div>
                 <div class="form-group col-span-3">
                   <label class="form-label" for="pct-date">Assessment Date</label>
@@ -263,7 +248,7 @@
           <div class="card">
             <div class="card-header">
               <span>Section 2: Property Environmental Baseline (PRPENV)</span>
-              <span class="breadcrumb-tag">tab_sec_code: ENV</span>
+              <span class="breadcrumb-tag dev-debug-meta">tab_sec_code: ENV</span>
             </div>
             <div class="card-body">
               <div class="form-grid-6">
@@ -297,7 +282,7 @@
                 <div class="form-group col-span-4">
                   <label class="form-label" for="fld-energy">Energy Efficiency Benchmark <span class="req-star" title="Required" aria-hidden="true">*</span></label>
                   <select class="form-control fld-required mark-dirty" id="fld-energy" name="ENERGY_EFFICIENCY_RATG">
-                    <option value="" selected disabled>-- Select Option --</option><option value="5_STAR">5 Star Benchmark</option><option value="4_STAR">4 Star</option><option value="3_STAR">3 Star</option><option value="NONE">None / Unrated</option></select>
+                    <option value="" selected disabled>-- Select Option --</option><option value="5_STAR">5 Star Benchmark</option><option value="4_STAR">4 Star</option><option value="3_STAR">3 Star</option><option value="2_STAR">2 Star</option><option value="1_STAR">1 Star</option><option value="NONE">None / Unrated</option></select>
                 </div>
 
                 <div class="form-group col-span-4">
@@ -330,8 +315,12 @@
                 </div>
 
                 <div class="form-group col-span-4">
-                  <label class="form-label" for="fld-water">Water Stress Exposure (Hydrological)</label>
-                  <input type="text" class="form-control fld-derived" id="fld-water" value="HIGH (Regional Aquifer Depleted - GIS Derived)" readonly>
+                  <label class="form-label" for="fld-water">Water Stress Exposure (Hydrological) <span id="fld-water-gis-badge" class="gis-derived-badge" hidden>[GIS-Derived]</span></label>
+                  <select class="form-control fld-optional mark-dirty" id="fld-water" name="WATER_STRESS">
+                    <option value="">-- Select Option --</option>
+                    <option value="LOW">Low</option><option value="MEDIUM">Medium</option>
+                    <option value="HIGH" selected>High</option><option value="SEVERE">Severe</option>
+                  </select>
                 </div>
               </div>
             </div>
@@ -343,30 +332,43 @@
           <div class="card">
             <div class="card-header">
               <span>Section 3: Physical Climate Hazard &amp; Vulnerability (PRPCLI)</span>
-              <span class="breadcrumb-tag">tab_sec_code: CLI</span>
+              <span class="breadcrumb-tag dev-debug-meta">tab_sec_code: CLI</span>
             </div>
             <div class="card-body">
               <div class="form-grid-6">
                 <div class="form-group col-span-4">
-                  <label class="form-label" for="fld-flood">Flood Hazard Risk Tier</label>
-                  <input type="text" class="form-control fld-derived" id="fld-flood" value="HIGH (Riverine / Pluvial Zone)" readonly>
-                  <span class="field-hint">GIS Model Layer v3.2</span>
+                  <label class="form-label" for="fld-flood">Flood Plain Risk <span id="fld-flood-gis-badge" class="gis-derived-badge" hidden>[GIS-Derived]</span></label>
+                  <select class="form-control fld-optional mark-dirty" id="fld-flood" name="FLOOD_RISK">
+                    <option value="">-- Select Option --</option>
+                    <option value="N">No Flood Hazard / Non-Pluvial</option>
+                    <option value="Y" selected>Within 100-Year Flood Plain / Pluvial Zone</option>
+                  </select>
                 </div>
 
                 <div class="form-group col-span-4">
-                  <label class="form-label" for="fld-seismic">Seismic / Earthquake Zone</label>
-                  <input type="text" class="form-control fld-derived" id="fld-seismic" value="Zone III (Moderate Seismic Intensity)" readonly>
+                  <label class="form-label" for="fld-seismic">Seismic / Earthquake Zone <span id="fld-seismic-gis-badge" class="gis-derived-badge" hidden>[GIS-Derived]</span></label>
+                  <select class="form-control fld-optional mark-dirty" id="fld-seismic" name="SEIS_ZONE">
+                    <option value="">-- Select Option --</option>
+                    <option value="ZONE_II">Zone II</option><option value="ZONE_III" selected>Zone III</option>
+                    <option value="ZONE_IV">Zone IV</option><option value="ZONE_V">Zone V</option>
+                  </select>
                   <span class="field-hint">National Disaster Management Mapping</span>
                 </div>
 
                 <div class="form-group col-span-4">
-                  <label class="form-label" for="fld-cyclone">Cyclone &amp; Windstorm Exposure</label>
-                  <input type="text" class="form-control fld-derived" id="fld-cyclone" value="MEDIUM (Coastal Proximity Buffer)" readonly>
+                  <label class="form-label" for="fld-cyclone">Cyclone &amp; Windstorm Exposure <span id="fld-cyclone-gis-badge" class="gis-derived-badge" hidden>[GIS-Derived]</span></label>
+                  <select class="form-control fld-optional mark-dirty" id="fld-cyclone" name="CYCLONE_EXPOSURE">
+                    <option value="">-- Select Option --</option><option value="LOW">Low</option>
+                    <option value="MEDIUM" selected>Medium (Coastal Proximity Buffer)</option><option value="HIGH">High</option>
+                  </select>
                 </div>
 
                 <div class="form-group col-span-4">
-                  <label class="form-label" for="fld-inund">Coastal Inundation / Sea-Level Rise</label>
-                  <input type="text" class="form-control fld-derived" id="fld-inund" value="HIGH (10km Coastal Inundation Line)" readonly>
+                  <label class="form-label" for="fld-inund">Coastal Inundation / Sea-Level Rise <span id="fld-inund-gis-badge" class="gis-derived-badge" hidden>[GIS-Derived]</span></label>
+                  <select class="form-control fld-optional mark-dirty" id="fld-inund" name="COASTAL_INUNDATION">
+                    <option value="">-- Select Option --</option><option value="LOW">Low</option><option value="MEDIUM">Medium</option>
+                    <option value="HIGH" selected>High (10km Coastal Inundation Line)</option>
+                  </select>
                 </div>
 
                 <div class="form-group col-span-4">
@@ -375,8 +377,20 @@
                 </div>
 
                 <div class="form-group col-span-4">
-                  <label class="form-label" for="fld-drought">Drought / Precipitation Deficit</label>
-                  <input type="text" class="form-control fld-derived" id="fld-drought" value="LOW (Precipitation Index Normal)" readonly>
+                  <label class="form-label" for="fld-drought">Drought / Precipitation Deficit <span id="fld-drought-gis-badge" class="gis-derived-badge" hidden>[GIS-Derived]</span></label>
+                  <select class="form-control fld-optional mark-dirty" id="fld-drought" name="DROUGHT_EXPOSURE">
+                    <option value="">-- Select Option --</option><option value="LOW" selected>Low (Precipitation Index Normal)</option>
+                    <option value="MEDIUM">Medium</option><option value="HIGH">High</option>
+                  </select>
+                </div>
+
+                <div class="form-group col-span-4">
+                  <label class="form-label" for="fld-climate">Climate Zone <span id="fld-climate-gis-badge" class="gis-derived-badge" hidden>[GIS-Derived]</span></label>
+                  <select class="form-control fld-optional mark-dirty" id="fld-climate" name="CLIM_ZONE">
+                    <option value="">-- Select Option --</option>
+                    <option value="TEMPERATE">Temperate</option><option value="WARM_HUMID">Warm Humid</option>
+                    <option value="COMPOSITE">Composite</option><option value="COLD">Cold</option><option value="HOT_DRY">Hot Dry</option>
+                  </select>
                 </div>
 
                 <div class="form-group col-span-4">
@@ -415,7 +429,7 @@
           <div class="card">
             <div class="card-header">
               <span>Section 4: Structural Resilience &amp; Insurance Protection (PRPRES)</span>
-              <span class="breadcrumb-tag">tab_sec_code: RES</span>
+              <span class="breadcrumb-tag dev-debug-meta">tab_sec_code: RES</span>
             </div>
             <div class="card-body">
               <div class="form-grid-6">
@@ -473,7 +487,7 @@
           <div class="card">
             <div class="card-header">
               <span>Section 5: Compliance &amp; Social Assessment</span>
-              <span class="breadcrumb-tag">tab_sec_code: CSO</span>
+              <span class="breadcrumb-tag dev-debug-meta">tab_sec_code: CSO</span>
             </div>
             <div class="card-body">
               <div class="form-grid-6">
@@ -493,6 +507,21 @@
                     <option value="Y">Active Notice Under Inquiry</option>
                   </select>
                 </div>
+                <div class="form-group col-span-6">
+                  <label class="form-label" for="fld-safety">Occupational &amp; Building Safety Audit <span class="req-star">*</span></label>
+                  <select class="form-control fld-required mark-dirty" id="fld-safety" name="SAFETY_COMPLIANCE_YN">
+                    <option value="">-- Select Option --</option>
+                    <option value="Y">Compliant / Audit Cleared</option><option value="N">Non-Compliant / Audit Outstanding</option>
+                  </select>
+                </div>
+                <div class="form-group col-span-6">
+                  <label class="form-label" for="fld-litigation">Litigation &amp; Land Dispute Status <span class="req-star">*</span></label>
+                  <select class="form-control fld-required mark-dirty" id="fld-litigation" name="LITIGATION_STAT">
+                    <option value="">-- Select Option --</option>
+                    <option value="NONE">Litigation Free</option><option value="RESOLVED">Past Dispute Resolved</option>
+                    <option value="PENDING">Active Dispute / Litigation Pending</option>
+                  </select>
+                </div>
               </div>
             </div>
           </div>
@@ -500,6 +529,10 @@
 
         <!-- Section 6: ESG Assessment Summary (read-only; derived from the record's pillar scores, not editable) -->
         <div id="prop-tab-sec-6" class="tab-panel tab-body" role="tabpanel">
+          <div class="score-validation-actions">
+            <p class="js-score-alert score-alert" role="alert" hidden>Assessment inputs have unsaved changes. Save or sign off the edited section, then reopen this summary to refresh the ESG rating.</p>
+            <span class="js-score-status" role="status">Preview only</span>
+          </div>
           <div class="card" id="prop-sum-pending" hidden>
             <div class="card-body">
               <strong>ESG Assessment Summary pending</strong>
@@ -622,7 +655,7 @@
           <div class="card">
             <div class="card-header">
               <span>Annual Environmental Ledger (ENVOBV)</span>
-              <button class="btn btn-primary btn-sm" type="button" onclick="showToast('Adding a new FY observation is not available yet.')">+ Add Observation FY</button>
+              <button id="btn-add-envobv-fy" class="btn btn-secondary" type="button" disabled title="Historical ledger updates restricted during active assessment">+ Add Observation FY</button>
             </div>
             <div class="card-body no-pad table-scroll">
               <table class="data-table">
@@ -664,8 +697,8 @@
           <span class="field-hint js-guidance" id="signoff-guidance-text"></span>
           <span class="signoff-actions">
             <button class="btn btn-secondary js-cancel-btn" type="button" disabled id="btn-cancel-active-tab" onclick="cancelActiveTabChanges()">Cancel Changes</button>
+            <button id="btn-save-draft" class="btn btn-secondary js-save-draft-btn" type="button" onclick="saveActiveSectionDraft()">Save Draft</button>
             <button class="btn btn-primary js-signoff-btn" type="button" disabled id="btn-signoff-active-tab" onclick="signOffActiveTab()">Sign Off Section</button>
-            <button class="btn btn-secondary js-reopen-btn" type="button" id="btn-reopen-active-tab" onclick="reopenActiveTab()" hidden>Re-open Section</button>
           </span>
         </div>
 
@@ -679,9 +712,8 @@
             <div>
               <strong class="banner-name" id="mfg-banner-name"></strong>
               <span class="breadcrumb-tag" id="mfg-banner-id"></span>
-              <span class="breadcrumb-tag" style="background:#fef3c7; color:#92400e;">TEMPLATE: CORE_MFG</span>
             </div>
-            <button class="btn btn-secondary btn-sm" type="button" onclick="closeMfgFormToSearch()">← Back to Search</button>
+            <button id="mfg-back-to-search" class="btn btn-secondary btn-back-search" type="button" onclick="closeMfgFormToSearch()">← Back to Search</button>
           </div>
         </div>
 
@@ -704,7 +736,7 @@
           <div class="card">
             <div class="card-header">
               <span>Section 1: Facility &amp; Siting Baseline (MFGLOC)</span>
-              <span class="breadcrumb-tag">tab_sec_code: MLO</span>
+              <span class="breadcrumb-tag dev-debug-meta">tab_sec_code: MLO</span>
             </div>
             <div class="card-body">
               <div class="form-grid-6">
@@ -766,7 +798,7 @@
           <div class="card">
             <div class="card-header">
               <span>Section 2: Energy &amp; Emissions Baseline (MFGENV)</span>
-              <span class="breadcrumb-tag">tab_sec_code: MEN</span>
+              <span class="breadcrumb-tag dev-debug-meta">tab_sec_code: MEN</span>
             </div>
             <div class="card-body">
               <div class="form-grid-6">
@@ -825,7 +857,7 @@
           <div class="card">
             <div class="card-header">
               <span>Section 3: Effluent &amp; Water Baseline (MFGWAT)</span>
-              <span class="breadcrumb-tag">tab_sec_code: MWT</span>
+              <span class="breadcrumb-tag dev-debug-meta">tab_sec_code: MWT</span>
             </div>
             <div class="card-body">
               <div class="form-grid-6">
@@ -880,7 +912,7 @@
             </div>
           </div>
         </div>
-        <div id="mfg-tab-sec-4" class="tab-panel tab-body" role="tabpanel"><div class="card"><div class="card-header"><span>Section 4: Hazardous Materials</span><span class="breadcrumb-tag">tab_sec_code: MHZ</span></div><div class="card-body"><p class="field-hint">Field definitions for this section have not been supplied yet.</p></div></div>
+        <div id="mfg-tab-sec-4" class="tab-panel tab-body" role="tabpanel"><div class="card"><div class="card-header"><span>Section 4: Hazardous Materials</span><span class="breadcrumb-tag dev-debug-meta">tab_sec_code: MHZ</span></div><div class="card-body"><p class="field-hint">Field definitions for this section have not been supplied yet.</p></div></div>
           <div class="card">
             <div class="card-header"><span>Fuel Consumption (auto-filled from record)</span><span class="breadcrumb-tag">Read-only</span></div>
             <div class="card-body">
@@ -901,7 +933,7 @@
             </div>
           </div>
         </div>
-        <div id="mfg-tab-sec-5" class="tab-panel tab-body" role="tabpanel"><div class="card"><div class="card-header"><span>Section 5: Consents &amp; Regulatory</span><span class="breadcrumb-tag">tab_sec_code: MRG</span></div><div class="card-body"><p class="field-hint">Field definitions for this section have not been supplied yet.</p></div></div></div>
+        <div id="mfg-tab-sec-5" class="tab-panel tab-body" role="tabpanel"><div class="card"><div class="card-header"><span>Section 5: Consents &amp; Regulatory</span><span class="breadcrumb-tag dev-debug-meta">tab_sec_code: MRG</span></div><div class="card-body"><p class="field-hint">Field definitions for this section have not been supplied yet.</p></div></div></div>
         <div id="mfg-tab-sec-6" class="tab-panel tab-body" role="tabpanel"><div class="card"><div class="card-header"><span>Section 6: Pending Definition</span></div><div class="card-body"><p class="field-hint">Field definitions for this section have not been supplied yet.</p></div></div></div>
         <div id="mfg-tab-sec-7" class="tab-panel tab-body" role="tabpanel">
           <div class="card">
@@ -933,6 +965,10 @@
 
         <!-- Section 10: ESG Assessment Summary (read-only, populated by renderMfgSummary) -->
         <div id="mfg-tab-sec-10" class="tab-panel tab-body" role="tabpanel">
+          <div class="score-validation-actions">
+            <p class="js-score-alert score-alert" role="alert" hidden>Assessment inputs have unsaved changes. Save or sign off the edited section, then reopen this summary to refresh the ESG rating.</p>
+            <span class="js-score-status" role="status">Preview only</span>
+          </div>
           <div class="form-grid-6 sum-grid">
             <!-- Top row: three equal cards (span 4 each) -->
             <div class="card col-span-4">
@@ -1007,8 +1043,8 @@
           <span class="field-hint js-guidance"></span>
           <span class="signoff-actions">
             <button class="btn btn-secondary js-cancel-btn" type="button" disabled onclick="cancelActiveTabChanges()">Cancel Changes</button>
+            <button id="mfg-save-draft" class="btn btn-secondary js-save-draft-btn" type="button" onclick="saveActiveSectionDraft()">Save Draft</button>
             <button class="btn btn-primary js-signoff-btn" type="button" disabled onclick="signOffActiveTab()">Sign Off Section 1</button>
-            <button class="btn btn-secondary js-reopen-btn" type="button" onclick="reopenActiveTab()" hidden>Re-open Section</button>
           </span>
         </div>
 
@@ -1021,9 +1057,8 @@
             <div>
               <strong class="banner-name" id="veh-banner-name"></strong>
               <span class="breadcrumb-tag" id="veh-banner-id"></span>
-              <span class="breadcrumb-tag" style="background:#fef3c7; color:#92400e;">TEMPLATE: FRM_VEH</span>
             </div>
-            <button class="btn btn-secondary btn-sm" type="button" onclick="closeVehicleFormToSearch()">← Back to Search</button>
+            <button id="veh-back-to-search" class="btn btn-secondary btn-back-search" type="button" onclick="closeVehicleFormToSearch()">← Back to Search</button>
           </div>
         </div>
 
@@ -1043,7 +1078,7 @@
           <div class="card">
             <div class="card-header">
               <span>Section 1: Vehicle Identification &amp; Technical Baseline (VEHIDENT)</span>
-              <span class="breadcrumb-tag">tab_sec_code: VID</span>
+              <span class="breadcrumb-tag dev-debug-meta">tab_sec_code: VID</span>
             </div>
             <div class="card-body">
               <div class="form-grid-6">
@@ -1185,7 +1220,7 @@
           <div class="card" style="margin-bottom: 14px;">
             <div class="card-header">
               <span>Section 2A: Fleet Operational Duty &amp; Usage Profile</span>
-              <span class="breadcrumb-tag">tab_sec_code: VUS-A</span>
+              <span class="breadcrumb-tag dev-debug-meta">tab_sec_code: VUS-A</span>
             </div>
             <div class="card-body">
               <div class="form-grid-6">
@@ -1232,7 +1267,7 @@
           <div class="card">
             <div class="card-header">
               <span>Section 2B: Environmental Efficiency &amp; Energy Sourcing</span>
-              <span class="breadcrumb-tag">tab_sec_code: VUS-B</span>
+              <span class="breadcrumb-tag dev-debug-meta">tab_sec_code: VUS-B</span>
             </div>
             <div class="card-body">
               <div class="form-grid-6">
@@ -1322,7 +1357,7 @@
           <div class="card" style="margin-bottom: 14px;">
             <div class="card-header">
               <span>Section 3A: Statutory &amp; Regulatory Compliance Profile</span>
-              <span class="breadcrumb-tag">tab_sec_code: VCP-A</span>
+              <span class="breadcrumb-tag dev-debug-meta">tab_sec_code: VCP-A</span>
             </div>
             <div class="card-body">
               <div class="form-grid-6">
@@ -1373,7 +1408,7 @@
           <div class="card">
             <div class="card-header">
               <span>Section 3B: Fleet Maintenance &amp; Roadworthiness Index</span>
-              <span class="breadcrumb-tag">tab_sec_code: VCP-B</span>
+              <span class="breadcrumb-tag dev-debug-meta">tab_sec_code: VCP-B</span>
             </div>
             <div class="card-body">
               <div class="form-grid-6">
@@ -1463,7 +1498,7 @@
           <div class="card" style="margin-bottom: 14px;">
             <div class="card-header">
               <span>Section 4A: Physical Climate Hazards &amp; Operational Vulnerability</span>
-              <span class="breadcrumb-tag">tab_sec_code: VTR-A</span>
+              <span class="breadcrumb-tag dev-debug-meta">tab_sec_code: VTR-A</span>
             </div>
             <div class="card-body">
               <div class="form-grid-6">
@@ -1501,7 +1536,7 @@
           <div class="card">
             <div class="card-header">
               <span>Section 4B: Transition Risk, Policy &amp; ZEV Mandates</span>
-              <span class="breadcrumb-tag">tab_sec_code: VTR-B</span>
+              <span class="breadcrumb-tag dev-debug-meta">tab_sec_code: VTR-B</span>
             </div>
             <div class="card-body">
               <div class="form-grid-6">
@@ -1586,7 +1621,7 @@
           <div class="card" style="margin-bottom: 14px;">
             <div class="card-header">
               <span>Section 5A: Traction Battery Chemistry &amp; Health State</span>
-              <span class="breadcrumb-tag">tab_sec_code: VST-A</span>
+              <span class="breadcrumb-tag dev-debug-meta">tab_sec_code: VST-A</span>
             </div>
             <div class="card-body">
               <div class="form-grid-6">
@@ -1629,7 +1664,7 @@
           <div class="card">
             <div class="card-header">
               <span>Section 5B: End-of-Life Vehicle (ELV) &amp; Circularity</span>
-              <span class="breadcrumb-tag">tab_sec_code: VST-B</span>
+              <span class="breadcrumb-tag dev-debug-meta">tab_sec_code: VST-B</span>
             </div>
             <div class="card-body">
               <div class="form-grid-6">
@@ -1687,10 +1722,14 @@
         <!-- TAB 6: Scoring & Valuation Output (VEHSUM) -->
         <!-- ========================================== -->
         <div id="veh-tab-sum" class="tab-panel tab-body" role="tabpanel">
+          <div class="score-validation-actions">
+            <p class="js-score-alert score-alert" role="alert" hidden>Assessment inputs have unsaved changes. Save or sign off the edited section, then reopen this summary to refresh the ESG rating.</p>
+            <span class="js-score-status" role="status">Preview only</span>
+          </div>
           <div class="card" style="margin-bottom: 14px;">
             <div class="card-header">
               <span>Section 6: Comprehensive Vehicle ESG Score &amp; Valuation Output</span>
-              <span class="breadcrumb-tag">tab_sec_code: VOUT</span>
+              <span class="breadcrumb-tag dev-debug-meta">tab_sec_code: VOUT</span>
             </div>
             <div class="card-body">
               <div class="score-card-summary">
@@ -1830,8 +1869,7 @@
               </div>
 
               <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 20px;">
-                <button type="button" class="btn btn-secondary" onclick="closeVehicleFormToSearch()">Return to Register</button>
-                <button type="button" class="btn btn-primary" id="veh-submit-assessment" onclick="submitVehicleAssessment()">Persist Scored Assessment</button>
+                <button type="button" class="btn btn-secondary btn-back-search" onclick="closeVehicleFormToSearch()">Return to Register</button>
               </div>
             </div>
           </div>
@@ -1842,8 +1880,8 @@
           <span class="field-hint js-guidance"></span>
           <span class="signoff-actions">
             <button class="btn btn-secondary js-cancel-btn" type="button" disabled onclick="cancelActiveTabChanges()">Cancel Changes</button>
+            <button id="veh-save-draft" class="btn btn-secondary js-save-draft-btn" type="button" onclick="saveActiveSectionDraft()">Save Draft</button>
             <button class="btn btn-primary js-signoff-btn" type="button" disabled onclick="signOffActiveTab()">Sign Off Section 1</button>
-            <button class="btn btn-secondary js-reopen-btn" type="button" onclick="reopenActiveTab()" hidden>Re-open Section</button>
           </span>
         </div>
 

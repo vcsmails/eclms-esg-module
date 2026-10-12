@@ -28,37 +28,83 @@ The Assessment Scoring Execution Pipeline orchestrates the complete ESG assessme
   rather than a fixed list of Property sections. Active weights must total
   exactly 100.00. Configure the corresponding rubric and grade matrix before use;
   missing weights return an explicit error rather than a persisted zero score.
-- The final Manufacturing/Vehicle sign-off validates all required sections and
-  waits for backend persistence before freezing or advancing. Failure retains
-  the browser draft and allows retry. In-flight duplicates are coalesced; the
-  summary reuses the final sign-off result instead of inserting another record.
+- NEW and EDIT use identical section guards. Editing locks other entry tabs;
+  the summary and edited tab remain accessible. Cancel restores only that
+  section's last saved snapshot. Clean tabs have no action bar. Editing exposes
+  **Cancel Changes | Save Draft | Sign Off Section N**, in that order.
+  Save Draft and Sign Off persist the full raw form snapshot and signed sections
+  to PostgreSQL. Sign-off validates before saving and only clears dirty state
+  after server confirmation. Neither action scores or navigates.
+  Save Draft retains the section's pending-sign-off bar, but successfully saved
+  inputs do not trigger an unsaved-data exit warning.
+- Summary validation buttons have been removed. Entering a summary calculates
+  a live preview; with an authoritative original appraisal and all 5
+  Property/Vehicle or 9 Manufacturing sections signed off, it automatically calls
+  `POST /api/assessment/submit` with `authority: "MA"`, `original_valuation`,
+  `policy_haircut_pct` and the same `form_attributes`. Inputs and navigation are
+  locked while submitting. Failed requests retain the draft for retry by
+  reopening the summary. Concurrent renders share one in-flight submission.
+  Completed responses are not cached; reopening fetches and calculates afresh.
 - Summary failures (including a 30-second request timeout or malformed response)
-  display an explicitly labelled **local estimate, not persisted**. Manufacturing
-  records without local pillar data display **Unavailable**. Vehicle fallback
-  retains the prototype's local score and outcome, not a database-approved grade.
+  display **Unavailable**, never fabricated/local scores or cached approvals.
   Late responses cannot overwrite another collateral's visible summary.
-- Property Section 6 remains read-only and pending in NEW mode until Sections
-  1-5 are signed off. Once eligible, it requests backend scoring even without seed
-  pillar data. Offline, existing seed pillars supply the local estimate; if none
-  exist, the existing unavailable card is shown. All three summaries use backend
-  grades and haircuts instead of their provisional local outcomes on success.
-- The existing calculate route writes a `SCORED` record to
-  `esg_assessment_ledger`; there is no separate `cvm_` submission or Checker
-  approval operation. The Vehicle action is labelled **Persist Scored Assessment**
-  and reuses a confirmed persistence result when its scoring inputs are unchanged.
+- Summary tabs are always viewable. Unsaved inputs show an alert and do not
+  trigger a new preview request. Saved but unsigned inputs can be previewed,
+  but cannot be submitted. Leaving with unsaved changes prompts:
+  **Data changes are not saved and will be lost. Exit anyway?**
+- The Express calculate route now returns `CALCULATED` without writing a ledger
+  row. Submit re-scores server-side and transactionally inserts an immutable
+  `APPROVED` ledger run and updates `coll_master` (matched by ID and type), with
+  no Checker queue. Missing master IDs in draft or submit requests return 422
+  with `Referential integrity violation: coll_id does not exist in coll_master.`;
+  a mismatched collateral type returns 409. Both writes lock the master row
+  transactionally; any write failure rolls back.
+  PostgreSQL numeric arithmetic applies policy haircut first, then ESG haircut.
+  The submitted valuation replaces the displayed stored valuation.
+- The register reads `GET /api/collateral/search?q=&coll_type=&limit=&offset=`
+  directly from PostgreSQL `coll_master`. It returns `{items,total,page,pageSize}`;
+  sidebar scopes constrain the collateral type and searches reset to page 1.
+  Selection always fetches `GET /api/collateral/:collId`, which returns 404 for
+  an absent ID. Bindings use `coll_id`; no local collateral datasets or
+  per-collateral caches remain.
+- The current master has no original appraisal column. The UI displays live
+  scores and the stored `esg_post_haircut_val` (labelled **stored**), but blocks
+  new valuation submission until an authoritative original appraisal is supplied.
+  It never substitutes zero or reconstructs an appraisal from the adjusted value.
+- Opening any form clears prototype/previous inputs and hydrates
+  `GET /api/assessment/draft/:collId`. Save Draft and Sign Off use
+  `POST /api/assessment/draft`; approval uses `/api/assessment/submit`.
+  No collateral records or drafts are read/written through localStorage or
+  sessionStorage. Only the open form's transient snapshots are held for Cancel
+  and dirty guards; these are cleared on exit or selection. Before-unload draft
+  saving also uses the REST endpoint. VAHAN no longer fabricates vehicle data;
+  it reports that its integration is unavailable.
 - Serve the frontend through the Express app (`http://localhost:3000/index.html`),
-  not `file://`. Existing HTML wrappers/classes and CSS are unchanged; Vehicle
-  summary elements now have stable IDs for binding.
+  not `file://`. Stable form/summary IDs are retained. Debug metadata and
+  template badges are hidden/removed; all form navbar titles use
+  **Sustainability Assessment**. The Annual Environmental Ledger add action is disabled.
+  Back-to-search controls use at least 38px height. Property Assessment Type
+  is removed from both the UI and outgoing payloads.
 
-Focused regression checks: `node --test eclms-esg-api/tests/assessment-wiring.test.js`
-and `node -c eclms-esg-web/js/esg-navigation.js` from the repository root.
+Focused regression checks: `cd eclms-esg-api && npm test`
+and `node --check eclms-esg-web/js/esg-navigation.js` from the repository root.
+The npm script runs unit tests only, not the legacy live-API E2E script.
+No browser automation is required.
 
 Property `form_attributes` use the `PROP_ESG_V1.0` rubric `attr_code`s. `buildAssessmentPayload`
 adds them through `applyPropRubricKeys`: `CERT_RATING_LEVEL` → `CERT_LEVEL`, `ENERGY_EFFICIENCY_RATG`
 → `EE_RATING` (`5_STAR` → `STAR_5`), `RENEWABLE_ENG_YN` → `RENEW_ENG`, `RENEWABLE_TYPE` → `REN_TYPE`,
 `GREEN_BLDG_CERT_YN` → `GRN_CERT_YN`, `RAINWATER_HARVEST_YN` → `RAIN_HARV`, `WASTEWATER_TREAT_YN` → `WW_TREAT`.
-Read-only derived text is parsed: `fld-water` → `WATER_STRESS`, `fld-flood` → `FLOOD_RISK` (HIGH/MEDIUM = Y),
-`fld-seismic` → `SEIS_ZONE`. `CLIM_ZONE` has no input in the form yet, so it is not sent.
+Property selects now send `WATER_STRESS`, `FLOOD_RISK`, `SEIS_ZONE` and `CLIM_ZONE`
+directly without overwriting rubric codes. Section 5 adds required
+`SAFETY_COMPLIANCE_YN` and `LITIGATION_STAT`. Water/physical climate dropdowns
+are editable when either coordinate is blank/missing. With both coordinates
+present, populated controls are locked and show **[GIS-Derived]**, independently
+of the old GIS sandbox flag. Empty/placeholder selects remain interactive.
+An empty climate zone defaults to `TEMPERATE` when coordinates are present;
+an explicitly empty/null saved `CLIM_ZONE` also hydrates as `TEMPERATE`.
+Coordinate format validation still applies at sign-off.
+This controls editability; it does not introduce a live GIS lookup service.
 
 PROP section weights use `TAB_ENV`, `TAB_LOC` and `SEC_SOC_GOV`. `SEC_SOC_GOV` has no rubric rules yet,
 so it contributes 0 until rules are added.
@@ -70,7 +116,7 @@ so it contributes 0 until rules are added.
 ### Data Flow
 
 ```
-Form Submission (POST /api/assessment/calculate-score)
+MA Submission (POST /api/assessment/submit; calculate-score is preview-only)
     ↓
 Extract Attributes (form_attributes JSON)
     ↓
@@ -239,9 +285,43 @@ Score 78.5 → 70.00 ≤ 78.5 ≤ 84.99 → Grade AA, Risk LOW_RISK, Haircut 2.5
 
 ## API Endpoints
 
+### Server-backed drafts
+
+Apply `db/migrations/031-create-collateral-draft-payload.sql` on fresh databases.
+It is idempotent and matches the existing `esg_collateral_draft_payload` table.
+
+- `GET /api/assessment/draft/:collId` returns
+  `{coll_id, form_attributes, signed_sections}` or `{}` when no draft exists.
+- `POST /api/assessment/draft` takes
+  `{coll_id, coll_type, form_attributes, signed_sections}`, upserts by collateral
+  ID, and returns the saved snapshot. A different collateral type for an
+  existing draft returns 409 rather than overwriting the wrong template.
+- `signed_sections` is an array of unique frontend tab IDs:
+  Property: `tab-loc`, `tab-env`, `tab-cli`, `tab-res`, `tab-cso`;
+  Manufacturing: `mfg-tab-sec-1` through `mfg-tab-sec-9`;
+  Vehicle: `veh-tab-ident`, `veh-tab-usage`, `veh-tab-comp`, `veh-tab-clim`, `veh-tab-sust`.
+- All form loaders await server hydration before opening the canvas. Saved
+  fields, including disabled/derived controls, and section sign-offs are
+  restored; browser-cached values never override the server snapshot.
+  A failed load aborts opening with an explicit error to avoid overwriting
+  an unavailable saved draft. Failed saves retain edited inputs for retry.
+- Draft persistence stores raw control values (including display formatting).
+  Scoring payloads separately normalize numbers and add rubric aliases.
+  Property hydration also uses the explicit `ATTR_TO_ELEMENT_ID` map, scoped
+  to the Property form, including controls without a `name`. `EE_RATING`
+  (`STAR_1` through `STAR_5`) maps to the corresponding `1_STAR` through
+  `5_STAR` select values; `RENEW_ENG` targets the existing `fld-ren-yn`;
+  `WATER_STRESS_RATG: MED` maps to `MEDIUM`. All energy tiers are selectable.
+  Native control-name values take precedence over conflicting legacy aliases,
+  including explicit empty values. Saving synchronizes the aliases from current
+  controls so old keys cannot restore discarded values on the next open.
+  Server-saved snapshots survive navigation and browser refresh. Session storage
+  is only a recovery cache, not proof that the server accepted a save.
+
 ### POST /api/assessment/calculate-score
 
-Calculate and persist ESG assessment.
+Calculate an ESG preview without persistence. This replaces the prototype's
+former write-on-calculate behavior.
 
 **Request:**
 ```bash
@@ -260,20 +340,27 @@ curl -X POST -H 'Content-Type: application/json' \
   http://localhost:3000/api/assessment/calculate-score
 ```
 
-**Response (201 Created):**
+**Response (200 OK):**
 ```json
 {
   "success": true,
-  "assessment_id": "76bf2e83-1261-4385-a8fd-c6f36c6bdc37",
+  "assessment_status": "CALCULATED",
   "composite_score": 78.5,
   "esg_grade": "AA",
   "risk_category": "LOW_RISK",
   "haircut_pct": 2.5,
   "component_scores": {...},
-  "scoring_detail": {...},
-  "assessed_at": "2026-10-11T21:47:56Z"
+  "scoring_detail": {...}
 }
 ```
+
+### POST /api/assessment/submit
+
+Uses the calculate request plus `authority: "MA"`, `original_valuation` (a
+non-negative amount with at most two decimals), and optional `policy_haircut_pct`
+(0–100, at most two decimals, default 0). Returns **201 Created** with scoring
+details, `assessment_id`, `assessment_status: "APPROVED"` and the exact numeric
+`post_haircut_valuation`. Never trusts a client-provided grade or score.
 
 ### GET /api/assessment/:assessmentId
 

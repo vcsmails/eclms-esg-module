@@ -201,7 +201,7 @@ async function resolveGradeFromDecision(pool, collType, compositeScore) {
  *   assessed_at
  * }
  */
-async function scoreAsset(pool, payload) {
+async function scoreAsset(pool, payload, { persist = true, status = "SCORED" } = {}) {
   const { coll_id, coll_type, model_version, form_attributes, assessed_by } = payload;
 
   if (!coll_id || !coll_type || !form_attributes) {
@@ -250,6 +250,23 @@ async function scoreAsset(pool, payload) {
     coll_type,
     compositeScore
   );
+  if (!Number.isFinite(haircutPct) || haircutPct < 0 || haircutPct > 100 || !esgGrade || !riskCategory) {
+    throw new HttpError(422, "Grade decision returned an invalid outcome.");
+  }
+
+  if (!persist) {
+    return {
+      coll_id, coll_type, composite_score: Number(compositeScore.toFixed(2)),
+      esg_grade: esgGrade, risk_category: riskCategory, haircut_pct: haircutPct,
+      assessment_status: "CALCULATED", scoring_detail: scoringDetail,
+      component_scores: {
+        env_score: sectionScores.TAB_ENV ?? null,
+        soc_score: sectionScores.SEC_SOC_GOV ?? null,
+        gov_score: sectionScores.TAB_LOC ?? null
+      },
+      flowable_decision_id
+    };
+  }
 
   // Step 4: Persist to assessment ledger
   const assessmentId = require("crypto").randomUUID();
@@ -267,16 +284,16 @@ async function scoreAsset(pool, payload) {
       coll_id,
       coll_type,
       model_version || `${coll_type}_ESG_V1.0`,
-      sectionScores["TAB_ENV"] || null,
-      sectionScores["SEC_SOC_GOV"] || null,
-      sectionScores["TAB_LOC"] || null,
+      sectionScores["TAB_ENV"] ?? null,
+      sectionScores["SEC_SOC_GOV"] ?? null,
+      sectionScores["TAB_LOC"] ?? null,
       compositeScore,
       esgGrade,
       riskCategory,
       haircutPct,
       flowable_decision_id,
       JSON.stringify(form_attributes),
-      "SCORED",
+      status,
       assessedByUser,
     ]
   );
@@ -284,6 +301,7 @@ async function scoreAsset(pool, payload) {
   const ledgerRecord = insertResult.rows[0];
 
   return {
+    assessment_status: status,
     assessment_id: ledgerRecord.assessment_id,
     coll_id: ledgerRecord.coll_id,
     coll_type: ledgerRecord.coll_type,
@@ -301,6 +319,48 @@ async function scoreAsset(pool, payload) {
     assessed_by: ledgerRecord.assessed_by,
     assessed_at: ledgerRecord.assessed_at,
   };
+}
+
+async function lockCollateral(client, collId, collType, exclusive = false) {
+  const { rows } = await client.query(
+    `SELECT coll_id, coll_type FROM coll_master WHERE coll_id = $1 ${exclusive ? "FOR UPDATE" : "FOR KEY SHARE"}`,
+    [collId]
+  );
+  if (!rows.length) throw new HttpError(422, "Referential integrity violation: coll_id does not exist in coll_master.");
+  if (rows[0].coll_type !== collType) throw new HttpError(409, "Collateral type does not match coll_master.");
+}
+
+async function submitAssessment(pool, payload) {
+  const { coll_id, coll_type, original_valuation, policy_haircut_pct = 0 } = payload;
+  if (payload.authority !== "MA") throw new HttpError(400, "Only MA submission is supported.");
+  const money = String(original_valuation);
+  const policy = String(policy_haircut_pct);
+  if (!/^\d{1,15}(?:\.\d{1,2})?$/.test(money) || !/^\d{1,3}(?:\.\d{1,2})?$/.test(policy) || Number(policy) > 100) {
+    throw new HttpError(400, "original_valuation and policy_haircut_pct must be non-negative amounts with at most two decimals; policy must not exceed 100.");
+  }
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await lockCollateral(client, coll_id, coll_type, true);
+    // Re-evaluate server-side; the browser's preview is never an authoritative score.
+    const result = await scoreAsset(client, payload, { status: "APPROVED" });
+    const valuation = await client.query(
+      `UPDATE coll_master SET esg_haircut_pct = $1,
+         esg_post_haircut_val = ROUND(($2::numeric - ROUND($2::numeric * $3::numeric / 100, 2)) * (1 - $1::numeric / 100), 2),
+         last_esg_assessment_id = $4::uuid
+       WHERE coll_id = $5 AND coll_type = $6
+       RETURNING esg_post_haircut_val`,
+      [result.haircut_pct, money, policy, result.assessment_id, coll_id, coll_type]
+    );
+    if (valuation.rowCount !== 1) throw new HttpError(409, "Collateral valuation update did not affect exactly one record.");
+    await client.query("COMMIT");
+    return { ...result, post_haircut_valuation: valuation.rows[0].esg_post_haircut_val, authority: "MA" };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 /**
@@ -394,6 +454,8 @@ async function getCollateralAssessments(pool, collId, limit = 10) {
 
 module.exports = {
   scoreAsset,
+  submitAssessment,
+  lockCollateral,
   getAssessment,
   getCollateralAssessments,
   evaluateSectionRubric,
