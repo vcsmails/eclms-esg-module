@@ -12,6 +12,59 @@ The Assessment Scoring Execution Pipeline orchestrates the complete ESG assessme
 
 ---
 
+## Property, Manufacturing and Vehicle frontend integration
+
+- Opening Property Section 6, Manufacturing Section 10 or Vehicle Section 6 calls
+  `POST /api/assessment/calculate-score` with `coll_type: "PROP"`, `"MANU"` or `"VEH"`.
+  The payload uses the existing `form_attributes` contract (no `answers` alias).
+  Attributes include saved draft values, unchanged EDIT fields and derived values
+  from the active form, excludes browser sign-off markers, and normalizes numeric
+  grouping separators and displayed SCM/KL/km units.
+- Section scores, weights, contributions, grade, risk category and ESG haircut
+  come from the API (`scoring_detail.weighted_sections`). Authoritative value and
+  policy haircut remain collateral-record inputs; the ESG haircut is applied
+  after the policy haircut. No valuation or policy values are invented by the API.
+- The scorer evaluates the ACTIVE sections configured for each collateral type,
+  rather than a fixed list of Property sections. Active weights must total
+  exactly 100.00. Configure the corresponding rubric and grade matrix before use;
+  missing weights return an explicit error rather than a persisted zero score.
+- The final Manufacturing/Vehicle sign-off validates all required sections and
+  waits for backend persistence before freezing or advancing. Failure retains
+  the browser draft and allows retry. In-flight duplicates are coalesced; the
+  summary reuses the final sign-off result instead of inserting another record.
+- Summary failures (including a 30-second request timeout or malformed response)
+  display an explicitly labelled **local estimate, not persisted**. Manufacturing
+  records without local pillar data display **Unavailable**. Vehicle fallback
+  retains the prototype's local score and outcome, not a database-approved grade.
+  Late responses cannot overwrite another collateral's visible summary.
+- Property Section 6 remains read-only and pending in NEW mode until Sections
+  1-5 are signed off. Once eligible, it requests backend scoring even without seed
+  pillar data. Offline, existing seed pillars supply the local estimate; if none
+  exist, the existing unavailable card is shown. All three summaries use backend
+  grades and haircuts instead of their provisional local outcomes on success.
+- The existing calculate route writes a `SCORED` record to
+  `esg_assessment_ledger`; there is no separate `cvm_` submission or Checker
+  approval operation. The Vehicle action is labelled **Persist Scored Assessment**
+  and reuses a confirmed persistence result when its scoring inputs are unchanged.
+- Serve the frontend through the Express app (`http://localhost:3000/index.html`),
+  not `file://`. Existing HTML wrappers/classes and CSS are unchanged; Vehicle
+  summary elements now have stable IDs for binding.
+
+Focused regression checks: `node --test eclms-esg-api/tests/assessment-wiring.test.js`
+and `node -c eclms-esg-web/js/esg-navigation.js` from the repository root.
+
+Property `form_attributes` use the `PROP_ESG_V1.0` rubric `attr_code`s. `buildAssessmentPayload`
+adds them through `applyPropRubricKeys`: `CERT_RATING_LEVEL` → `CERT_LEVEL`, `ENERGY_EFFICIENCY_RATG`
+→ `EE_RATING` (`5_STAR` → `STAR_5`), `RENEWABLE_ENG_YN` → `RENEW_ENG`, `RENEWABLE_TYPE` → `REN_TYPE`,
+`GREEN_BLDG_CERT_YN` → `GRN_CERT_YN`, `RAINWATER_HARVEST_YN` → `RAIN_HARV`, `WASTEWATER_TREAT_YN` → `WW_TREAT`.
+Read-only derived text is parsed: `fld-water` → `WATER_STRESS`, `fld-flood` → `FLOOD_RISK` (HIGH/MEDIUM = Y),
+`fld-seismic` → `SEIS_ZONE`. `CLIM_ZONE` has no input in the form yet, so it is not sent.
+
+PROP section weights use `TAB_ENV`, `TAB_LOC` and `SEC_SOC_GOV`. `SEC_SOC_GOV` has no rubric rules yet,
+so it contributes 0 until rules are added.
+
+---
+
 ## Architecture
 
 ### Data Flow
@@ -22,12 +75,10 @@ Form Submission (POST /api/assessment/calculate-score)
 Extract Attributes (form_attributes JSON)
     ↓
 Evaluate Section Rubrics (TRUBRC)
-    TAB_ENV → environmental component score
-    SEC_LOC_RISK → location/climate risk score
-    SEC_SOC_GOV → social/governance score
+    ACTIVE section codes for the requested collateral type
     ↓
 Apply Section Weights (TSECWT)
-    40% TAB_ENV + 40% SEC_LOC_RISK + 20% SEC_SOC_GOV
+    ACTIVE database section weights (total 100.00%)
     ↓
 Calculate Composite Score (0-100)
     ↓
@@ -443,4 +494,3 @@ When Flowable is running:
 - **Rubric Matching:** First matching rule wins (rules evaluated in database order)
 - **Persistence:** All assessments are immutable; status can be updated (SCORED → APPROVED/REJECTED)
 - **Audit Trail:** `raw_responses` JSONB preserves original form data forever
-

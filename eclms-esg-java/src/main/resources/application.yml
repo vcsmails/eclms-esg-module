@@ -1,0 +1,23 @@
+server:
+  port: ${ESG_JAVA_PORT:8090}
+  error:
+    include-message: always
+
+spring:
+  application:
+    name: eclms-esg-java
+  datasource:
+    url: ${ESG_JDBC_URL:jdbc:postgresql://localhost:5432/eclms_esg}
+    username: ${ESG_DB_USER:${USER}}
+    password: ${ESG_DB_PASSWORD:}
+
+flowable:
+  # Off by default: the live eclms_esg database already holds Flowable 7 act_* tables used by the Docker REST service.
+  database-schema-update: ${FLOWABLE_SCHEMA_UPDATE:false}
+
+esg:
+  workflow:
+    # true: submitted assessments are SUBMITTED for checker review; false: APPROVED directly (Maker mode).
+    maker-checker-enabled: ${ESG_MAKER_CHECKER:true}
+  dmn:
+    deploy-on-startup: true

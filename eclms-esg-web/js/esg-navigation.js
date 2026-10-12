@@ -299,7 +299,7 @@ function handleTabSwitch(tabId, tabBtn) {
   executeTabSwitch(tabId, tabBtn);
 }
 
-function executeTabSwitch(tabId, tabBtn) {
+function executeTabSwitch(tabId, tabBtn, assessment) {
   const ctx = ctxOfTab(tabId);
   document.querySelectorAll(`#${ctx.viewId} .tab-panel`).forEach((panel) => panel.classList.remove("active"));
   document.querySelectorAll(`#${ctx.viewId} .form-tab-btn`).forEach((button) => {
@@ -317,7 +317,8 @@ function executeTabSwitch(tabId, tabBtn) {
   }
   refreshSignOffUI();
   if (tabId === "prop-tab-sec-6") renderPropSummary();
-  if (tabId === "mfg-tab-sec-10") renderMfgSummary();
+  if (tabId === "mfg-tab-sec-10") renderMfgSummary(assessment);
+  if (tabId === "veh-tab-sum") renderVehSummary(assessment);
 }
 
 function cancelTabSwitch() {
@@ -520,8 +521,8 @@ function refreshSignOffUI() {
   reopenBtn.textContent = `Re-open ${SECTION_NAMES[tabId]}`;
   // ADD mode: actions stay disabled until the section receives its first edit
   const awaitingInput = !editMode && !signed && !isFormDirty;
-  signoffBtn.disabled = awaitingInput;
-  cancelBtn.disabled = awaitingInput;
+  signoffBtn.disabled = awaitingInput || assessmentSubmissions.has(activeCollateralId);
+  cancelBtn.disabled = awaitingInput || assessmentSubmissions.has(activeCollateralId);
   cancelBtn.hidden = signed;
   const next = ctx.sectionOrder[ctx.sectionOrder.indexOf(tabId) + 1];
   bar.querySelector(".js-guidance").textContent = awaitingInput
@@ -595,18 +596,60 @@ function validateSectionForSignOff(tabId) {
   return "";
 }
 
-function signOffActiveTab() {
+async function signOffActiveTab() {
   const tabId = activeTabId();
+  const collateralId = activeCollateralId;
+  const ctx = ctxOfTab(tabId);
+  if (assessmentSubmissions.has(collateralId)) return;
   if (!activeCollateralId || !ctxOfTab(tabId).signoff.includes(tabId) || blockingSection(tabId)) return;
   const problem = validateSectionForSignOff(tabId);
   if (problem) {
     showToast(problem);
     return;
   }
+  const finalSignOff = ctx !== FORM_CONTEXTS.prop && tabId === ctx.signoff[ctx.signoff.length - 1];
+  if (finalSignOff) {
+    for (const section of ctx.signoff) {
+      const sectionProblem = validateSectionForSignOff(section);
+      if (sectionProblem) {
+        showToast(`${SECTION_NAMES[section]}: ${sectionProblem}`);
+        return;
+      }
+    }
+  }
   if (!saveActiveSectionDraft()) return;
+  let assessment;
+  if (finalSignOff) {
+    assessmentSubmissions.add(collateralId);
+    refreshSignOffUI();
+    const payload = buildAssessmentPayload(ctx, collateralId);
+    try {
+      assessment = await requestAssessment(payload);
+      if (activeCollateralId !== collateralId || activeCtx() !== ctx || activeTabId() !== tabId) return;
+      if (assessmentPayloadKey(buildAssessmentPayload(ctx, collateralId)) !== assessmentPayloadKey(payload)) {
+        isFormDirty = true;
+        showToast("Values changed while scoring. Sign off again to persist the latest assessment.");
+        return;
+      }
+    } catch (error) {
+      console.error("Assessment persistence failed:", error);
+      if (activeCollateralId === collateralId && activeCtx() === ctx) {
+        isFormDirty = true;
+        showToast(`Final sign-off failed: ${error.message}. Your draft is retained; retry when the service is available.`);
+      }
+      return;
+    } finally {
+      assessmentSubmissions.delete(collateralId);
+      refreshSignOffUI();
+    }
+  }
   if (workflowMode === "EDIT") {
     setDraftStatus(`${SECTION_NAMES[tabId]} signed off`);
-    showToast(`${SECTION_NAMES[tabId]} signed off. All sections are unlocked.`);
+    if (assessment) {
+      const next = ctx.sectionOrder[ctx.sectionOrder.indexOf(tabId) + 1];
+      executeTabSwitch(next, document.querySelector(`#${ctx.viewId} [data-tab="${next}"], #${ctx.viewId} [data-mfg-tab="${next}"], #${ctx.viewId} [data-veh-tab="${next}"]`), assessment);
+    }
+    showToast(assessment ? "Assessment scored and persisted to the ESG ledger." : `${SECTION_NAMES[tabId]} signed off. All sections are unlocked.`);
     return;
   }
   try {
@@ -616,13 +659,12 @@ function signOffActiveTab() {
     return;
   }
   refreshSignOffUI();
-  const ctx = ctxOfTab(tabId);
   const next = ctx.sectionOrder[ctx.sectionOrder.indexOf(tabId) + 1];
   setDraftStatus(`${SECTION_NAMES[tabId]} signed off`);
   if (next && SECTION_NAMES[next]) {
     // Take the user straight to the newly unlocked section
-    executeTabSwitch(next, document.querySelector(`#${ctx.viewId} [data-tab="${next}"], #${ctx.viewId} [data-mfg-tab="${next}"]`));
-    showToast(`${SECTION_NAMES[tabId]} signed off. Switched to ${SECTION_NAMES[next]}.`);
+    executeTabSwitch(next, document.querySelector(`#${ctx.viewId} [data-tab="${next}"], #${ctx.viewId} [data-mfg-tab="${next}"], #${ctx.viewId} [data-veh-tab="${next}"]`), assessment);
+    showToast(assessment ? "Assessment scored and persisted to the ESG ledger." : `${SECTION_NAMES[tabId]} signed off. Switched to ${SECTION_NAMES[next]}.`);
   } else {
     showToast(`${SECTION_NAMES[tabId]} signed off and frozen.`);
   }
@@ -831,20 +873,18 @@ function selectedLabel(selectId) {
   return option && option.value ? option.textContent : "-";
 }
 
-function renderPropSummary() {
+async function renderPropSummary() {
+  const sequence = ++summaryRenderSequence;
   const row = CORE_COLLATERAL_MASTER.find((item) => item.collateral_id === activeCollateralId);
-  const pending = !row || !row.has_assessment;
+  const pending = !row || Boolean(blockingSection("prop-tab-sec-6"));
   $("prop-sum-pending").hidden = !pending;
   $("prop-sum-unavailable").hidden = true;
   $("prop-sum-grid").hidden = true;
+  $("prop-tab-sec-6").dataset.scoringSource = pending ? "pending" : "loading";
   if (pending) return;
-  if (!row.esg_pillars) {
-    $("prop-sum-unavailable").hidden = false;
-    return;
-  }
   $("prop-sum-grid").hidden = false;
-
-  const s = computePropSummary(row);
+  const current = () => sequence === summaryRenderSequence && activeCollateralId === row.collateral_id
+    && activeCtx() === FORM_CONTEXTS.prop && activeTabId() === "prop-tab-sec-6";
 
   $("prop-sum-id").textContent = row.collateral_id;
   $("prop-sum-type").textContent = row.classification_label;
@@ -853,12 +893,48 @@ function renderPropSummary() {
   $("prop-sum-city").textContent = $("fld-city").value || row.district || "-";
   $("prop-sum-pincode").textContent = row.pincode || "-";
 
+  $("prop-sum-flood").textContent = $("fld-flood").value || "-";
+  $("prop-sum-energy").textContent = selectedLabel("fld-energy");
+  $("prop-sum-water").textContent = $("fld-water").value || "-";
+  $("prop-sum-seismic").textContent = $("fld-seismic").value || "-";
+  $("prop-sum-eui").textContent = row.eui_kwh_sqm ? `${row.eui_kwh_sqm} kWh/sq.m/yr` : "-";
+  $("prop-sum-solar").textContent = $("fld-ren-kw").value ? `${$("fld-ren-kw").value} kWp` : "-";
+  $("prop-sum-rwh").textContent = selectedLabel("fld-rain");
+
+  ["score", "total", "grade", "grade-label", "total-band", "haircut", "auth", "policy-pct", "policy-amt", "esg-pct", "esg-amt", "final"].forEach((id) => {
+    $(`prop-sum-${id}`).textContent = "Calculating...";
+  });
+  $("prop-sum-circle").style.setProperty("--score", 0);
+  $("prop-sum-pillars").replaceChildren();
+  try {
+    const result = await requestAssessment(buildAssessmentPayload(FORM_CONTEXTS.prop, row.collateral_id));
+    if (!current()) return;
+    populatePropSummary(assessmentSummary(result, row));
+    $("prop-tab-sec-6").dataset.scoringSource = "api";
+  } catch (error) {
+    console.error("Property scoring failed:", error);
+    if (!current()) return;
+    if (row.esg_pillars) {
+      const fallback = computePropSummary(row);
+      populatePropSummary({ ...fallback, ...fallback.band });
+      $("prop-sum-grade-label").textContent += " (Local estimate - not persisted)";
+    } else {
+      $("prop-sum-grid").hidden = true;
+      $("prop-sum-unavailable").hidden = false;
+    }
+    $("prop-tab-sec-6").dataset.scoringSource = "fallback";
+    showToast(`Property scoring unavailable: ${error.message}. ${row.esg_pillars ? "Showing a local estimate, not persisted." : "No local estimate is available."}`);
+  }
+}
+
+function populatePropSummary(s) {
+  const valued = s.authoritative > 0;
   $("prop-sum-pillars").replaceChildren(...s.pillars.map((pillar) => {
     const tr = document.createElement("tr");
     [
       pillar.label,
       `${pillar.weight}%`,
-      pillar.raw.toFixed(0),
+      pillar.raw.toFixed(2),
       pillar.contribution.toFixed(2),
       pillarRiskBand(pillar.raw)
     ].forEach((text) => {
@@ -869,29 +945,20 @@ function renderPropSummary() {
     return tr;
   }));
   $("prop-sum-total").textContent = `${s.score.toFixed(2)} / 100`;
-  $("prop-sum-total-band").textContent = `${s.band.grade} (${s.band.descriptor})`;
+  $("prop-sum-total-band").textContent = `${s.grade} (${s.descriptor})`;
 
   $("prop-sum-circle").style.setProperty("--score", s.score);
   $("prop-sum-score").textContent = s.score.toFixed(2);
-  $("prop-sum-grade").textContent = s.band.grade;
-  $("prop-sum-grade-label").textContent = s.band.descriptor;
-  $("prop-sum-haircut").textContent = `${s.band.haircut.toFixed(2)}%`;
+  $("prop-sum-grade").textContent = s.grade;
+  $("prop-sum-grade-label").textContent = s.descriptor;
+  $("prop-sum-haircut").textContent = `${s.haircut.toFixed(2)}%`;
 
-  $("prop-sum-auth").textContent = formatINR(s.authoritative);
+  $("prop-sum-auth").textContent = valued ? formatINR(s.authoritative) : "Not recorded";
   $("prop-sum-policy-pct").textContent = `${s.policyPct.toFixed(2)}%`;
-  $("prop-sum-policy-amt").textContent = `- ${formatINR(s.policyAmt)}`;
-  $("prop-sum-esg-pct").textContent = `${s.band.haircut.toFixed(2)}%`;
-  $("prop-sum-esg-amt").textContent = `- ${formatINR(s.esgAmt)}`;
-  $("prop-sum-final").textContent = formatINR(s.final);
-
-  $("prop-sum-flood").textContent = $("fld-flood").value || "-";
-  $("prop-sum-energy").textContent = selectedLabel("fld-energy");
-  $("prop-sum-water").textContent = $("fld-water").value || "-";
-  $("prop-sum-seismic").textContent = $("fld-seismic").value || "-";
-
-  $("prop-sum-eui").textContent = row.eui_kwh_sqm ? `${row.eui_kwh_sqm} kWh/sq.m/yr` : "-";
-  $("prop-sum-solar").textContent = $("fld-ren-kw").value ? `${$("fld-ren-kw").value} kWp` : "-";
-  $("prop-sum-rwh").textContent = selectedLabel("fld-rain");
+  $("prop-sum-policy-amt").textContent = valued ? `- ${formatINR(s.policyAmt)}` : "Not recorded";
+  $("prop-sum-esg-pct").textContent = `${s.haircut.toFixed(2)}%`;
+  $("prop-sum-esg-amt").textContent = valued ? `- ${formatINR(s.esgAmt)}` : "Not recorded";
+  $("prop-sum-final").textContent = valued ? formatINR(s.final) : "Not recorded";
 }
 
 const MFG_PILLARS = [
@@ -917,14 +984,7 @@ function computeMfgSummary(row) {
   });
   const score = round2(pillars.reduce((sum, pillar) => sum + pillar.contribution, 0));
 
-  const authoritative = parseINR(row.value);
-  const policyPct = Number(row.policy_haircut_pct) || 0;
-  const policyAmt = round2((authoritative * policyPct) / 100);
-  const postPolicy = authoritative - policyAmt;
-  const esgAmt = round2((postPolicy * MFG_OUTCOME.haircut) / 100);
-  const final = round2(postPolicy - esgAmt);
-
-  return { pillars, score, ...MFG_OUTCOME, authoritative, policyPct, policyAmt, esgAmt, final };
+  return { pillars, score, ...MFG_OUTCOME, ...summaryValuation(row, MFG_OUTCOME.haircut) };
 }
 
 function formatQty(value, unit = "") {
@@ -940,12 +1000,149 @@ function isoLabel(value) {
   return "Not recorded";
 }
 
-function renderMfgSummary() {
-  const row = CORE_COLLATERAL_MASTER.find((item) => item.collateral_id === activeCollateralId);
-  if (!row || !row.mfg_esg_pillars) return;
-  const s = computeMfgSummary(row);
-  const valued = s.authoritative > 0;
+const assessmentSubmissions = new Set();
+const assessmentRequests = new Map();
+const persistedAssessments = new Map();
+let summaryRenderSequence = 0;
 
+// Maps Property form fields onto the PROP_ESG_V1.0 rubric attr_codes.
+const PROP_RUBRIC_DIRECT_FIELDS = {
+  CERT_RATING_LEVEL: "CERT_LEVEL",
+  RENEWABLE_ENG_YN: "RENEW_ENG",
+  RENEWABLE_TYPE: "REN_TYPE",
+  GREEN_BLDG_CERT_YN: "GRN_CERT_YN",
+  RAINWATER_HARVEST_YN: "RAIN_HARV",
+  WASTEWATER_TREAT_YN: "WW_TREAT",
+};
+const PROP_ENERGY_STAR_CODES = { "5_STAR": "STAR_5", "4_STAR": "STAR_4", "3_STAR": "STAR_3", NONE: "NONE" };
+
+// Derived fields are read-only free text, e.g. "HIGH (Riverine / Pluvial Zone)", so the leading code is parsed.
+function leadingDerivedCode(elementId) {
+  const text = (document.getElementById(elementId)?.value || "").trim().toUpperCase();
+  return text.split(/[\s(]/)[0] || "";
+}
+
+function applyPropRubricKeys(formAttributes) {
+  Object.entries(PROP_RUBRIC_DIRECT_FIELDS).forEach(([source, target]) => {
+    if (source in formAttributes) formAttributes[target] = formAttributes[source];
+  });
+  if ("ENERGY_EFFICIENCY_RATG" in formAttributes) {
+    formAttributes.EE_RATING = PROP_ENERGY_STAR_CODES[formAttributes.ENERGY_EFFICIENCY_RATG] || "";
+  }
+
+  const waterToken = leadingDerivedCode("fld-water");
+  formAttributes.WATER_STRESS = { LOW: "LOW", MED: "MEDIUM", MEDIUM: "MEDIUM", HIGH: "HIGH", SEVERE: "SEVERE" }[waterToken] || "";
+
+  // Flood tier HIGH or MEDIUM counts as a flood-plain exposure (Y); LOW or NONE does not (N).
+  const floodToken = leadingDerivedCode("fld-flood");
+  formAttributes.FLOOD_RISK = ["HIGH", "MEDIUM", "MED"].includes(floodToken) ? "Y" : ["LOW", "NONE"].includes(floodToken) ? "N" : "";
+
+  const seismicMatch = (document.getElementById("fld-seismic")?.value || "").match(/Zone\s+(III|IV|II|V)\b/i);
+  formAttributes.SEIS_ZONE = seismicMatch ? `ZONE_${seismicMatch[1].toUpperCase()}` : "";
+}
+
+function buildAssessmentPayload(ctx, collateralId) {
+  const answers = readDraft(collateralId);
+  const formAttributes = Object.fromEntries(Object.entries(answers).filter(([name]) => !name.startsWith("__")));
+  // EDIT records may not have a browser draft for unchanged sections.
+  document.querySelectorAll(`#${ctx.viewId} input[name], #${ctx.viewId} select[name], #${ctx.viewId} textarea[name]`).forEach((field) => {
+    let value = field.value.trim();
+    if (/^-?\d[\d,]*(?:\.\d+)?(?:\s+(?:SCM|KL|km))?$/.test(value)) {
+      value = value.replace(/,/g, "").replace(/\s+(?:SCM|KL|km)$/, "");
+    }
+    formAttributes[field.name] = value;
+  });
+  const collType = ctx === FORM_CONTEXTS.prop ? "PROP" : ctx === FORM_CONTEXTS.mfg ? "MANU" : "VEH";
+  if (collType === "PROP") applyPropRubricKeys(formAttributes);
+  return { coll_id: collateralId, coll_type: collType, form_attributes: formAttributes };
+}
+
+function scoreNumber(value, name) {
+  if ((typeof value !== "number" && typeof value !== "string") || String(value).trim() === "" || !Number.isFinite(Number(value))) {
+    throw new Error(`Scoring response has an invalid ${name}`);
+  }
+  return Number(value);
+}
+
+function assessmentPayloadKey(payload) {
+  return JSON.stringify({ coll_id: payload.coll_id, coll_type: payload.coll_type, form_attributes: payload.form_attributes });
+}
+
+function assessmentSummary(result, row) {
+  if (result.success !== true || !result.assessment_id || !result.esg_grade || !result.risk_category) {
+    throw new Error("Scoring response is missing its persisted assessment or outcome");
+  }
+  const score = scoreNumber(result.composite_score, "composite score");
+  const haircut = scoreNumber(result.haircut_pct, "haircut");
+  const sections = result.scoring_detail?.weighted_sections;
+  if (score < 0 || score > 100 || haircut < 0 || haircut > 100 || !Array.isArray(sections) || !sections.length) {
+    throw new Error("Scoring response has invalid scores or missing weighted sections");
+  }
+  const pillars = sections.map((section) => {
+    const raw = scoreNumber(section.section_score, "section score");
+    const weight = scoreNumber(section.weight_pct, "section weight");
+    const contribution = scoreNumber(section.contribution, "section contribution");
+    if (raw < 0 || raw > 100 || weight < 0 || weight > 100 || contribution < 0 || contribution > 100) {
+      throw new Error("Scoring response has an out-of-range section");
+    }
+    return { label: section.section_name || section.section_code, raw, weight, contribution };
+  });
+  if (Math.abs(pillars.reduce((total, pillar) => total + pillar.weight, 0) - 100) > 0.01) {
+    throw new Error("Scoring response section weights do not total 100.00");
+  }
+  return {
+    score, haircut, pillars, grade: result.esg_grade, descriptor: result.risk_category,
+    ...summaryValuation(row, haircut)
+  };
+}
+
+function summaryValuation(row, haircut) {
+  const authoritative = parseINR(row.value);
+  const policyPct = Number(row.policy_haircut_pct) || 0;
+  const policyAmt = round2(authoritative * policyPct / 100);
+  const esgAmt = round2((authoritative - policyAmt) * haircut / 100);
+  return { authoritative, policyPct, policyAmt, esgAmt, final: round2(authoritative - policyAmt - esgAmt) };
+}
+
+async function requestAssessment(payload) {
+  const key = assessmentPayloadKey(payload);
+  if (assessmentRequests.has(key)) return assessmentRequests.get(key);
+  const request = (async () => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+    try {
+      const response = await fetch("/api/assessment/calculate-score", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        signal: controller.signal
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.message || `Scoring failed (HTTP ${response.status})`);
+      if (result.coll_id !== payload.coll_id || result.coll_type !== payload.coll_type) {
+        throw new Error("Scoring response does not match the requested collateral");
+      }
+      assessmentSummary(result, CORE_COLLATERAL_MASTER.find((row) => row.collateral_id === payload.coll_id));
+      persistedAssessments.set(key, result);
+      return result;
+    } finally {
+      clearTimeout(timeout);
+    }
+  })();
+  assessmentRequests.set(key, request);
+  try {
+    return await request;
+  } finally {
+    assessmentRequests.delete(key);
+  }
+}
+
+async function renderMfgSummary(assessment) {
+  const row = CORE_COLLATERAL_MASTER.find((item) => item.collateral_id === activeCollateralId);
+  if (!row) return;
+  const sequence = ++summaryRenderSequence;
+  const current = () => sequence === summaryRenderSequence && activeCollateralId === row.collateral_id
+    && activeCtx() === FORM_CONTEXTS.mfg && activeTabId() === "mfg-tab-sec-10";
   $("mfg-sum-id").textContent = row.collateral_id;
   $("mfg-sum-facility").textContent = row.facility_name || row.name;
   $("mfg-sum-customer").textContent = row.customer_name || "Not recorded";
@@ -953,12 +1150,41 @@ function renderMfgSummary() {
   $("mfg-sum-workforce").textContent = formatQty(row.workforce_total);
   $("mfg-sum-iso").textContent = isoLabel(row.iso_50001);
 
+  ["score", "total", "grade", "grade-label", "total-band", "auth", "policy-pct", "policy-amt", "esg-pct", "esg-amt", "final"].forEach((id) => {
+    $(`mfg-sum-${id}`).textContent = "Calculating...";
+  });
+  $("mfg-sum-circle").style.setProperty("--score", 0);
+  $("mfg-sum-pillars").replaceChildren();
+  $("mfg-tab-sec-10").dataset.scoringSource = "loading";
+  try {
+    const result = assessment || await requestAssessment(buildAssessmentPayload(FORM_CONTEXTS.mfg, row.collateral_id));
+    if (!current()) return;
+    populateMfgSummary(assessmentSummary(result, row));
+    $("mfg-tab-sec-10").dataset.scoringSource = "api";
+  } catch (error) {
+    console.error("Manufacturing scoring failed:", error);
+    if (!current()) return;
+    if (row.mfg_esg_pillars) {
+      populateMfgSummary(computeMfgSummary(row));
+      $("mfg-sum-grade-label").textContent += " (Local estimate - not persisted)";
+    } else {
+      ["score", "total", "grade", "grade-label", "total-band", "auth", "policy-pct", "policy-amt", "esg-pct", "esg-amt", "final"].forEach((id) => {
+        $(`mfg-sum-${id}`).textContent = "Unavailable";
+      });
+    }
+    $("mfg-tab-sec-10").dataset.scoringSource = "fallback";
+    showToast(`Manufacturing scoring unavailable: ${error.message}. ${row.mfg_esg_pillars ? "Showing a local estimate, not persisted." : "No local estimate is available."}`);
+  }
+}
+
+function populateMfgSummary(s) {
+  const valued = s.authoritative > 0;
   $("mfg-sum-pillars").replaceChildren(...s.pillars.map((pillar) => {
     const tr = document.createElement("tr");
     [
       pillar.label,
       `${pillar.weight}%`,
-      pillar.raw.toFixed(1),
+      pillar.raw.toFixed(2),
       pillar.contribution.toFixed(2),
       pillarRiskBand(pillar.raw)
     ].forEach((text) => {
@@ -1251,8 +1477,114 @@ function fetchVahanDetails() {
   }, 350);
 }
 
-function submitVehicleAssessment() {
-  showToast("Vehicle ESG Assessment successfully submitted for Checker approval.");
+let vehFallbackSummary;
+
+function getVehFallbackSummary(row) {
+  if (!vehFallbackSummary) {
+    const pillars = [...$("veh-sum-pillars").rows].slice(0, -1).map((tr) => ({
+      label: tr.cells[0].textContent.trim(),
+      weight: parseFloat(tr.cells[1].textContent),
+      raw: parseFloat(tr.cells[2].textContent),
+      contribution: parseFloat(tr.cells[3].textContent)
+    }));
+    vehFallbackSummary = {
+      pillars, score: round2(pillars.reduce((total, pillar) => total + pillar.contribution, 0)),
+      grade: "B+", descriptor: "Low Risk", haircut: 5
+    };
+  }
+  return { ...vehFallbackSummary, ...summaryValuation(row, vehFallbackSummary.haircut) };
+}
+
+function populateVehSummary(s) {
+  $("veh-sum-score").textContent = `${s.score.toFixed(2)} / 100.00`;
+  $("veh-sum-grade").textContent = `Grade ${s.grade} (${s.descriptor})`;
+  $("veh-sum-grade-label").textContent = s.descriptor;
+  $("veh-sum-haircut").textContent = `- ${s.haircut.toFixed(2)} %`;
+  $("veh-sum-haircut-label").textContent = "ESG valuation adjustment";
+  const tbody = $("veh-sum-pillars");
+  const total = $("veh-sum-total-row");
+  const templates = [...tbody.rows].filter((tr) => tr !== total);
+  const rows = s.pillars.map((pillar, index) => {
+    const tr = (templates[index] || templates[0]).cloneNode(true);
+    [pillar.label, `${pillar.weight.toFixed(2)} %`, pillar.raw.toFixed(2), pillar.contribution.toFixed(2), pillarRiskBand(pillar.raw)].forEach((text, index) => {
+      const cell = tr.cells[index];
+      (cell.firstElementChild || cell).textContent = text;
+    });
+    return tr;
+  });
+  total.cells[3].textContent = s.score.toFixed(2);
+  total.cells[4].firstElementChild.textContent = `Grade ${s.grade} (${s.descriptor})`;
+  tbody.replaceChildren(...rows, total);
+  const valued = s.authoritative > 0;
+  ["veh-sum-auth", "veh-sum-auth-adjusted"].forEach((id) => { $(id).textContent = valued ? formatINR(s.authoritative) : "Not recorded"; });
+  ["veh-sum-esg-amt", "veh-sum-esg-adjusted"].forEach((id) => { $(id).textContent = valued ? `- ${formatINR(s.esgAmt)}` : "Not recorded"; });
+  $("veh-sum-esg-pct").textContent = `- ${s.haircut.toFixed(2)} %`;
+  $("veh-sum-valuation-note").textContent = `ESG adjustment after policy haircut (${s.policyPct.toFixed(2)}%: ${formatINR(s.policyAmt)})`;
+  $("veh-sum-retention").textContent = valued ? `${(s.final / s.authoritative * 100).toFixed(2)} % Retention` : "Not recorded";
+  $("veh-sum-final").textContent = valued ? formatINR(s.final) : "Not recorded";
+}
+
+async function renderVehSummary(assessment) {
+  const row = CORE_COLLATERAL_MASTER.find((item) => item.collateral_id === activeCollateralId);
+  if (!row) return;
+  const fallback = getVehFallbackSummary(row);
+  const sequence = ++summaryRenderSequence;
+  const current = () => sequence === summaryRenderSequence && activeCollateralId === row.collateral_id
+    && activeCtx() === FORM_CONTEXTS.veh && activeTabId() === "veh-tab-sum";
+  // Replace any prior asset's numbers while waiting, with the source explicitly labelled.
+  populateVehSummary(fallback);
+  $("veh-sum-source").textContent = "Calculating - local estimate";
+  $("veh-tab-sum").dataset.scoringSource = "loading";
+  $("veh-submit-assessment").disabled = true;
+  try {
+    const result = assessment || await requestAssessment(buildAssessmentPayload(FORM_CONTEXTS.veh, row.collateral_id));
+    if (!current()) return;
+    populateVehSummary(assessmentSummary(result, row));
+    $("veh-sum-source").textContent = "Scored and persisted to ESG ledger";
+    $("veh-tab-sum").dataset.scoringSource = "api";
+  } catch (error) {
+    console.error("Vehicle scoring failed:", error);
+    if (!current()) return;
+    $("veh-sum-source").textContent = "Local estimate - not persisted";
+    $("veh-tab-sum").dataset.scoringSource = "fallback";
+    showToast(`Vehicle scoring unavailable: ${error.message}. Showing a local estimate, not persisted.`);
+  } finally {
+    if (current()) $("veh-submit-assessment").disabled = false;
+  }
+}
+
+async function submitVehicleAssessment() {
+  const ctx = FORM_CONTEXTS.veh;
+  const collateralId = activeCollateralId;
+  if (!collateralId || activeCtx() !== ctx || assessmentSubmissions.has(collateralId)) return;
+  if (isFormDirty || blockingSection("veh-tab-sum")) {
+    showToast("Save and sign off all vehicle sections before persisting the assessment.");
+    return;
+  }
+  for (const tabId of ctx.signoff) {
+    const problem = validateSectionForSignOff(tabId);
+    if (problem) {
+      showToast(problem);
+      return;
+    }
+  }
+  assessmentSubmissions.add(collateralId);
+  $("veh-submit-assessment").disabled = true;
+  try {
+    const payload = buildAssessmentPayload(ctx, collateralId);
+    const result = persistedAssessments.get(assessmentPayloadKey(payload)) || await requestAssessment(payload);
+    if (activeCollateralId !== collateralId || activeCtx() !== ctx) return;
+    if (activeTabId() === "veh-tab-sum") await renderVehSummary(result);
+    showToast("Assessment scored and persisted to the ESG ledger. No Checker approval was submitted.");
+  } catch (error) {
+    console.error("Vehicle assessment persistence failed:", error);
+    if (activeCollateralId === collateralId && activeCtx() === ctx) {
+      showToast(`Assessment persistence could not be confirmed: ${error.message}. Please retry.`);
+    }
+  } finally {
+    assessmentSubmissions.delete(collateralId);
+    if (activeCollateralId === collateralId && activeCtx() === ctx) $("veh-submit-assessment").disabled = false;
+  }
 }
 
 // Left-rail navigation

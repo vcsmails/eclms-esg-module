@@ -10,6 +10,7 @@
  */
 
 const { executeDecision } = require("./flowable-client.service");
+const { HttpError } = require("../cvm-routes");
 
 /**
  * Calculate a section score by evaluating form attributes against rubric rules.
@@ -88,9 +89,9 @@ async function evaluateSectionRubric(pool, collType, sectionCode, formAttributes
  *   SEC_SOC_GOV (20%): 42.00 → 42.00 * 0.20 = 8.40
  *   Composite: 11.40 + 14.00 + 8.40 = 33.80
  */
-async function calculateCompositeScore(pool, collType, sectionScores) {
+async function calculateCompositeScore(pool, collType, sectionScores, configuredSections) {
   try {
-    const result = await pool.query(
+    const result = configuredSections ? { rows: configuredSections } : await pool.query(
       `SELECT section_code, section_name, weight_pct
        FROM esg_coll_section_weight
        WHERE coll_type = $1 AND status = 'ACTIVE'
@@ -212,7 +213,18 @@ async function scoreAsset(pool, payload) {
   const scoringDetail = { sections: [] };
 
   // Step 1: Evaluate each section's rubric rules
-  const sectionCodes = ["TAB_ENV", "SEC_LOC_RISK", "SEC_SOC_GOV"];
+  const { rows: configuredSections } = await pool.query(
+    `SELECT section_code, section_name, weight_pct
+     FROM esg_coll_section_weight
+     WHERE coll_type = $1 AND status = 'ACTIVE'
+     ORDER BY display_seq ASC`,
+    [coll_type]
+  );
+  const totalWeight = configuredSections.reduce((sum, section) => sum + Math.round(Number(section.weight_pct) * 100), 0);
+  if (!configuredSections.length || totalWeight !== 10000) {
+    throw new HttpError(422, `Active section weights for ${coll_type} must total 100.00 before scoring.`);
+  }
+  const sectionCodes = configuredSections.map((section) => section.section_code);
   for (const sectionCode of sectionCodes) {
     const { sectionScore, evaluatedRules } = await evaluateSectionRubric(
       pool,
@@ -229,7 +241,7 @@ async function scoreAsset(pool, payload) {
   }
 
   // Step 2: Calculate weighted composite score
-  const { compositeScore, weightedSections } = await calculateCompositeScore(pool, coll_type, sectionScores);
+  const { compositeScore, weightedSections } = await calculateCompositeScore(pool, coll_type, sectionScores, configuredSections);
   scoringDetail.weighted_sections = weightedSections;
 
   // Step 3: Resolve grade via Flowable DMN or database
@@ -254,10 +266,10 @@ async function scoreAsset(pool, payload) {
       assessmentId,
       coll_id,
       coll_type,
-      model_version || "PROP_ESG_V1.0",
+      model_version || `${coll_type}_ESG_V1.0`,
       sectionScores["TAB_ENV"] || null,
       sectionScores["SEC_SOC_GOV"] || null,
-      sectionScores["SEC_LOC_RISK"] || null,
+      sectionScores["TAB_LOC"] || null,
       compositeScore,
       esgGrade,
       riskCategory,
@@ -317,11 +329,11 @@ async function getAssessment(pool, assessmentId) {
         : record.raw_responses;
       
       // Rebuild section evaluations (simplified - only shows score, not detailed rules)
-      const sectionCodes = ["TAB_ENV", "SEC_LOC_RISK", "SEC_SOC_GOV"];
+      const sectionCodes = ["TAB_ENV", "TAB_LOC", "SEC_SOC_GOV"];
       scoringDetail.sections = sectionCodes.map(sectionCode => {
         let score = null;
         if (sectionCode === "TAB_ENV") score = record.env_score;
-        else if (sectionCode === "SEC_LOC_RISK") score = record.gov_score;
+        else if (sectionCode === "TAB_LOC") score = record.gov_score;
         else if (sectionCode === "SEC_SOC_GOV") score = record.soc_score;
         
         return {
