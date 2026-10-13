@@ -1,5 +1,8 @@
 // Global state
 let isFormDirty = false;
+let isAssessmentDirty = false;
+let propertySummaryCache = null;
+let activePropertyLifecycle = {};
 let pendingTabId = null;
 let pendingTabElement = null;
 let activeCollateralId = null;
@@ -66,8 +69,11 @@ function setDraftStatus(text) {
 // Track edits (text inputs fire "input", selects fire "change")
 ["change", "input"].forEach((eventName) => {
   document.addEventListener(eventName, (event) => {
-    if (event.target.classList && event.target.classList.contains("mark-dirty")) {
-      const panel = event.target.closest(".tab-panel");
+    const panel = event.target.closest?.(".tab-panel");
+    const propertyInput = panel && FORM_CONTEXTS.prop.signoff.includes(panel.id)
+      && ["INPUT", "SELECT", "TEXTAREA"].includes(event.target.tagName)
+      && !event.target.readOnly && !event.target.disabled;
+    if (propertyInput || event.target.classList?.contains("mark-dirty")) {
       if (panel && activeCtx()?.signoff.includes(panel.id)) markSectionDirty(panel.id);
     }
   });
@@ -215,6 +221,14 @@ function hydrateFormAttributes(ctx, attributes) {
     else field.value = attributes[field.name] ?? "";
   });
   if (ctx === FORM_CONTEXTS.prop) {
+    ["fld-coastal-zone", "fld-extreme-heat"].forEach((id) => {
+      const field = fields.find((input) => input.id === id);
+      const saved = field && attributes[field.name];
+      if (saved && ![...field.options].some((option) => option.value === String(saved))) {
+        console.warn(`Unsupported saved value for ${field.name}: reselection required.`);
+        showToast("A saved coastal zone or extreme heat value needs reselection. Please choose a supported option.");
+      }
+    });
     Object.entries(ATTR_TO_ELEMENT_ID).forEach(([attribute, id]) => {
       if (!Object.hasOwn(attributes, attribute)) return;
       const field = fields.find((input) => input.id === id);
@@ -253,6 +267,7 @@ async function hydrateServerDraft(row, ctx) {
       result.signed_sections.forEach((id) => { draft[signOffKey(id)] = "Y"; });
     }
     hydrateFormAttributes(ctx, draft);
+    if (ctx === FORM_CONTEXTS.prop) applyPropertyLifecycle(result);
     setActiveDraft(row.coll_id, draft);
     return true;
   } catch (error) {
@@ -367,6 +382,7 @@ function snapshotSection(tabId) {
 }
 
 function beginAssessmentSession(ctx) {
+  setAssessmentHeader(ctx);
   entryDraft = readDraft(activeCollateralId);
   dirtyTabId = null;
   isFormDirty = false;
@@ -378,6 +394,7 @@ function beginAssessmentSession(ctx) {
 }
 
 function markSectionDirty(tabId) {
+  if (FORM_CONTEXTS.prop.signoff.includes(tabId)) isAssessmentDirty = true;
   if (!isFormDirty) {
     staleBeforeEdit = scoreStale;
     draftBeforeEdit = readDraft(activeCollateralId);
@@ -607,6 +624,8 @@ function cancelActiveTabChanges() {
   scoreStale = staleBeforeEdit;
   assessmentRevision++;
   if (activeCtx() === FORM_CONTEXTS.prop) {
+    isAssessmentDirty = true;
+    applyPropertyLifecycle(activePropertyLifecycle);
     toggleCertFields($("fld-green").value);
     applyDependentGroups();
     applyGisEditability();
@@ -643,6 +662,7 @@ async function saveActiveSectionDraft(silent = false, signedOff = false) {
   const payload = {
     coll_id: collateralId,
     coll_type: ctx === FORM_CONTEXTS.prop ? "PROP" : ctx === FORM_CONTEXTS.mfg ? "MANU" : "VEH",
+    ...(ctx === FORM_CONTEXTS.prop ? { authority: ACTIVE_USER_AUTHORITY } : {}),
     form_attributes: Object.fromEntries(Object.entries(draft).filter(([name]) => !name.startsWith("__"))),
     signed_sections: ctx.signoff.filter((id) => draft[signOffKey(id)] === "Y")
   };
@@ -655,6 +675,7 @@ async function saveActiveSectionDraft(silent = false, signedOff = false) {
     validateDraftResponse(result, collateralId, ctx);
     setActiveDraft(collateralId, draft);
     if (activeCollateralId !== collateralId || activeCtx() !== ctx) return false;
+    if (ctx === FORM_CONTEXTS.prop) applyPropertyLifecycle(result);
     entryDraft = draft;
     draftBeforeEdit = draft;
     staleBeforeEdit = true;
@@ -743,11 +764,36 @@ async function selectCollateral(collateralId, mode) {
 async function loadFormState(row) {
   clearAssessmentInputs(FORM_CONTEXTS.prop);
   syncRatingLevels($("fld-cert-agency").value);
-  $("pct-asmt-id").value = row.assessment_id || "Assigned on first save";
+  $("pct-asmt-id").value = "Assigned on first save";
   $("pct-coll-id").value = row.coll_id;
   $("pct-status").value = row.assessment_status;
   applyGisEditability();
   return hydrateServerDraft(row, FORM_CONTEXTS.prop);
+}
+
+function propertyFreshness(assessmentDate, now = Date.now()) {
+  if (!assessmentDate) return "Pending Assessment";
+  const timestamp = Date.parse(assessmentDate);
+  if (!Number.isFinite(timestamp)) throw new Error("Invalid Property assessment date.");
+  const ageDays = Math.floor((now - timestamp) / 86400000);
+  return ageDays > 365 ? "OVERDUE" : ageDays >= 335 ? "DUE_SOON" : "CURRENT";
+}
+
+function applyPropertyLifecycle(result) {
+  activePropertyLifecycle = {
+    assessment_ref: result.assessment_ref || null,
+    assessment_date: result.assessment_date || null,
+    approved_at: result.approved_at || null,
+    signed_sections: result.signed_sections || []
+  };
+  const { assessment_ref, assessment_date, approved_at } = activePropertyLifecycle;
+  $("pct-asmt-id").value = assessment_ref || "Assigned on first save";
+  $("pct-asmt-date").value = assessment_date ? new Date(assessment_date).toISOString().slice(0, 10) : "Pending Assessment";
+  $("pct-approved-date").value = approved_at ? new Date(approved_at).toISOString() : "Pending Approval";
+  $("pct-freshness").value = propertyFreshness(assessment_date);
+  $("pct-review").value = assessment_date ? new Date(Date.parse(assessment_date) + 365 * 86400000).toISOString().slice(0, 10) : "Pending Assessment";
+  const allSigned = FORM_CONTEXTS.prop.signoff.every((id) => activePropertyLifecycle.signed_sections.includes(id));
+  $("pct-status").value = approved_at && allSigned ? "APPROVED" : assessment_ref ? "DRAFT" : "NOT_INITIATED";
 }
 
 // ---- Property Section 6: ESG Assessment Summary ----
@@ -819,6 +865,15 @@ async function fetchSummaryCollateral(ctx) {
 async function renderPropSummary(assessment) {
   const sequence = ++summaryRenderSequence;
   const revision = assessmentRevision;
+  if (!assessment && !isAssessmentDirty && propertySummaryCache?.collateralId === activeCollateralId) {
+    $("prop-sum-pending").hidden = true;
+    $("prop-sum-unavailable").hidden = true;
+    $("prop-sum-grid").hidden = false;
+    populatePropSummary(propertySummaryCache.summary);
+    $("prop-tab-sec-6").dataset.scoringSource = propertySummaryCache.source;
+    refreshSignOffUI();
+    return;
+  }
   const row = await fetchSummaryCollateral(FORM_CONTEXTS.prop);
   if (!row || sequence !== summaryRenderSequence) return;
   const pending = !row;
@@ -852,10 +907,16 @@ async function renderPropSummary(assessment) {
   $("prop-sum-circle").style.setProperty("--score", 0);
   $("prop-sum-pillars").replaceChildren();
   try {
-    const result = assessment || await summaryAssessment(FORM_CONTEXTS.prop, row.coll_id);
+    const result = assessment || await (hasUnsavedChanges() || isFormDirty
+      ? requestAssessment(buildAssessmentPayload(FORM_CONTEXTS.prop, row.coll_id))
+      : summaryAssessment(FORM_CONTEXTS.prop, row.coll_id));
     if (!current()) return;
-    populatePropSummary(assessmentSummary(result, row));
-    $("prop-tab-sec-6").dataset.scoringSource = result.assessment_status === "APPROVED" ? "approved" : "api";
+    const summary = assessmentSummary(result, row);
+    const source = result.assessment_status === "APPROVED" ? "approved" : "api";
+    populatePropSummary(summary);
+    $("prop-tab-sec-6").dataset.scoringSource = source;
+    propertySummaryCache = { collateralId: row.coll_id, summary, source };
+    isAssessmentDirty = false;
   } catch (error) {
     console.error("Property scoring failed:", error);
     if (!current()) return;
@@ -1171,6 +1232,28 @@ function populateMfgSummary(s) {
 }
 
 
+function setAssessmentHeader(ctx) {
+  const actions = $("top-bar-actions");
+  if (!actions) return;
+  actions.hidden = !ctx;
+  $("header-assessment-title").hidden = Boolean(ctx);
+  ["prop", "mfg", "veh"].forEach((type) => {
+    $(`${type}-header-identity`).hidden = ctx !== FORM_CONTEXTS[type];
+  });
+  if (!ctx) setDraftStatus("");
+}
+
+function closeActiveFormToSearch() {
+  if (draftLoading) {
+    navigateMenu(currentCategoryScope === "ALL" ? "SEARCH" : currentCategoryScope);
+    return;
+  }
+  const ctx = activeCtx();
+  if (ctx === FORM_CONTEXTS.prop) closeFormToSearch();
+  else if (ctx === FORM_CONTEXTS.mfg) closeMfgFormToSearch();
+  else if (ctx === FORM_CONTEXTS.veh) closeVehicleFormToSearch();
+}
+
 function closeFormToSearch() {
   if (!confirmAssessmentExit()) {
     return;
@@ -1189,6 +1272,10 @@ function showSearchWorkspace() {
 }
 
 function clearActiveAssessment() {
+  setAssessmentHeader(null);
+  isAssessmentDirty = false;
+  propertySummaryCache = null;
+  activePropertyLifecycle = {};
   ++collateralSelectionSequence;
   ++draftLoadSequence;
   draftLoading = false;

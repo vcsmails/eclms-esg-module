@@ -23,6 +23,45 @@ const DRAFT_SECTIONS = {
   VEH: ["veh-tab-ident", "veh-tab-usage", "veh-tab-comp", "veh-tab-clim", "veh-tab-sust"]
 };
 
+function propertyLifecycle(row = {}, now = Date.now()) {
+  const assessmentDate = row.assessment_date ? new Date(row.assessment_date) : null;
+  const ageDays = assessmentDate ? Math.floor((now - assessmentDate.getTime()) / 86400000) : null;
+  return {
+    assessment_ref: row.assessment_ref || null,
+    assessment_date: assessmentDate?.toISOString() || null,
+    approved_at: row.approved_at ? new Date(row.approved_at).toISOString() : null,
+    data_freshness_status: ageDays === null ? null : ageDays > 365 ? "OVERDUE" : ageDays >= 335 ? "DUE_SOON" : "CURRENT"
+  };
+}
+
+async function readPropertyLifecycle(pool, collId) {
+  const { rows } = await pool.query(
+    "SELECT assessment_ref, assessment_date, approved_at FROM esg_collateral_draft_payload WHERE coll_id = $1 AND coll_type = 'PROP'",
+    [collId]
+  );
+  return propertyLifecycle(rows[0]);
+}
+
+function propertyAttributes(attributes, lifecycle = {}) {
+  const protectedKeys = ["ASSESSMENT_ID", "ASSESSMENT_DATE", "APPROVED_DATE", "DATA_FRESHNESS_STATUS", "NEXT_REVIEW_DATE", "ASSESSMENT_STATUS"];
+  const result = Object.fromEntries(Object.entries(attributes).filter(([key]) => !protectedKeys.includes(key)));
+  if (lifecycle.assessment_ref) {
+    result.ASSESSMENT_ID = lifecycle.assessment_ref;
+    result.ASSESSMENT_DATE = lifecycle.assessment_date;
+    result.APPROVED_DATE = lifecycle.approved_at;
+  }
+  return result;
+}
+
+async function presentAssessment(pool, assessment) {
+  if (assessment.coll_type !== "PROP") return assessment;
+  const attributes = assessment.raw_responses;
+  const lifecycle = typeof attributes?.ASSESSMENT_ID === "string" && /^ESG-\d{2}-\d{7}$/.test(attributes.ASSESSMENT_ID)
+    ? propertyLifecycle({ assessment_ref: attributes.ASSESSMENT_ID, assessment_date: attributes.ASSESSMENT_DATE, approved_at: attributes.APPROVED_DATE })
+    : await readPropertyLifecycle(pool, assessment.coll_id);
+  return { ...assessment, ...lifecycle };
+}
+
 module.exports = function createAssessmentRouter(pool) {
   const router = express.Router();
 
@@ -30,15 +69,22 @@ module.exports = function createAssessmentRouter(pool) {
     const collId = req.params.collId;
     if (!collId.trim() || collId.length > 50) throw new HttpError(400, "Invalid collateral ID.");
     const { rows } = await pool.query(
-      "SELECT coll_id, form_attributes, signed_sections FROM esg_collateral_draft_payload WHERE coll_id = $1",
+      "SELECT coll_id, coll_type, form_attributes, signed_sections, assessment_ref, assessment_date, approved_at FROM esg_collateral_draft_payload WHERE coll_id = $1",
       [collId]
     );
-    res.json(rows[0] || {});
+    const row = rows[0];
+    res.json(row ? {
+      coll_id: row.coll_id, form_attributes: row.form_attributes, signed_sections: row.signed_sections,
+      ...(row.coll_type === "PROP" ? propertyLifecycle(row) : {})
+    } : {});
   }));
 
   router.post("/draft", wrap(async (req, res) => {
     validatePayload(req.body);
     const { coll_id, coll_type, form_attributes, signed_sections } = req.body;
+    if (coll_type === "PROP" && req.body.authority !== undefined && req.body.authority !== "MA") {
+      throw new HttpError(400, "Property section approval requires MA authority.");
+    }
     const sections = DRAFT_SECTIONS[coll_type];
     if (coll_id.length > 50 || !sections || !Array.isArray(signed_sections)
         || signed_sections.some((section) => !sections.includes(section))
@@ -58,11 +104,26 @@ module.exports = function createAssessmentRouter(pool) {
              updated_at = CURRENT_TIMESTAMP
          WHERE esg_collateral_draft_payload.coll_type = EXCLUDED.coll_type
          RETURNING coll_id, form_attributes, signed_sections`,
-        [coll_id, coll_type, JSON.stringify(form_attributes), JSON.stringify(signed_sections)]
+        [coll_id, coll_type, JSON.stringify(coll_type === "PROP" ? propertyAttributes(form_attributes) : form_attributes), JSON.stringify(signed_sections)]
       );
       if (!rows.length) throw new HttpError(409, "A draft for this collateral exists under a different collateral type.");
+      let lifecycle = {};
+      if (coll_type === "PROP") {
+        const approved = req.body.authority === "MA" && sections.every((section) => signed_sections.includes(section));
+        const saved = await client.query(
+          `UPDATE esg_collateral_draft_payload
+           SET assessment_ref = COALESCE(assessment_ref, 'ESG-' || TO_CHAR(CURRENT_TIMESTAMP, 'YY') || '-' || LPAD(nextval('esg_asmt_seq')::text, 7, '0')),
+               assessment_date = COALESCE(assessment_date, CURRENT_TIMESTAMP),
+               approved_at = CASE WHEN $2::boolean THEN COALESCE(approved_at, CURRENT_TIMESTAMP) ELSE approved_at END
+           WHERE coll_id = $1 AND coll_type = 'PROP'
+           RETURNING assessment_ref, assessment_date, approved_at`,
+          [coll_id, approved]
+        );
+        if (!saved.rows.length) throw new HttpError(409, "Property draft lifecycle could not be saved.");
+        lifecycle = propertyLifecycle(saved.rows[0]);
+      }
       await client.query("COMMIT");
-      res.json(rows[0]);
+      res.json({ ...rows[0], ...lifecycle });
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;
@@ -153,14 +214,20 @@ module.exports = function createAssessmentRouter(pool) {
 
     res.status(200).json({
       success: true,
-      ...assessment,
+      ...await presentAssessment(pool, assessment),
     });
   }));
 
   router.post("/submit", wrap(async (req, res) => {
     validatePayload(req.body);
-    const assessment = await submitAssessment(pool, req.body);
-    res.status(201).json({ success: true, ...assessment });
+    let payload = req.body;
+    let lifecycle = {};
+    if (payload.coll_type === "PROP") {
+      lifecycle = await readPropertyLifecycle(pool, payload.coll_id);
+      payload = { ...payload, form_attributes: propertyAttributes(payload.form_attributes, lifecycle) };
+    }
+    const assessment = await submitAssessment(pool, payload);
+    res.status(201).json({ success: true, ...assessment, ...lifecycle });
   }));
 
   /**
@@ -177,7 +244,8 @@ module.exports = function createAssessmentRouter(pool) {
       throw new HttpError(400, "collId is required");
     }
 
-    const assessments = await getCollateralAssessments(pool, collId, limit);
+    const records = await getCollateralAssessments(pool, collId, limit);
+    const assessments = await Promise.all(records.map((assessment) => presentAssessment(pool, assessment)));
 
     res.json({
       success: true,
@@ -203,7 +271,7 @@ module.exports = function createAssessmentRouter(pool) {
       const assessment = await getAssessment(pool, assessmentId);
       res.json({
         success: true,
-        ...assessment,
+        ...await presentAssessment(pool, assessment),
       });
     } catch (err) {
       if (err instanceof HttpError) {

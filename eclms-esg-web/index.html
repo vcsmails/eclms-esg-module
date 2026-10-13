@@ -53,18 +53,33 @@
       </li>
     </ul>
 
-    <div class="user-footer">
-      <div class="user-avatar" aria-hidden="true">M</div>
-      <div><strong>System Maker</strong><small>Auth Model: MA_CH</small></div>
-    </div>
   </aside>
 
   <main class="main-workspace">
     <header class="top-bar">
-      <div class="top-heading" id="header-assessment-title">Global Collateral Master Register</div>
-      <div class="top-actions" id="top-bar-actions" hidden>
+      <div class="top-workspace">
+        <div class="top-heading" id="header-assessment-title">Global Collateral Master Register</div>
+        <div class="top-actions" id="top-bar-actions" hidden>
+          <div class="assessment-identity" id="prop-header-identity" hidden>
+            <strong>Property: <span id="banner-coll-id"></span></strong>
+            <span class="identity-name" id="banner-prop-name"></span>
+            <span class="breadcrumb-tag">FRM_PROP</span>
+          </div>
+          <div class="assessment-identity" id="mfg-header-identity" hidden>
+            <strong>Manufacturing: <span id="mfg-banner-id"></span></strong>
+            <span class="identity-name" id="mfg-banner-name"></span>
+            <span class="breadcrumb-tag">CORE_MFG</span>
+          </div>
+          <div class="assessment-identity" id="veh-header-identity" hidden>
+            <strong>Vehicle: <span id="veh-banner-id"></span></strong>
+            <span class="identity-name" id="veh-banner-name"></span>
+            <span class="breadcrumb-tag">FRM_VEH</span>
+          </div>
+          <button id="btn-back-to-search" class="btn btn-secondary btn-back-search" type="button" onclick="closeActiveFormToSearch()">← Back to Search</button>
+        </div>
         <span class="draft-status" id="draft-status" role="status" aria-live="polite"></span>
       </div>
+      <div class="header-user"><strong>System Maker</strong><span>Auth Model: MA_CH</span></div>
     </header>
 
     <div class="content-area">
@@ -124,16 +139,6 @@
       <!-- VIEW 2: Multi-tab collateral form (template FRM_PROP) -->
       <section id="view-assessment-form" hidden>
 
-        <div class="card banner-card">
-          <div class="card-body banner-body">
-            <div>
-              <strong class="banner-name" id="banner-prop-name"></strong>
-              <span class="breadcrumb-tag" id="banner-coll-id"></span>
-            </div>
-            <button id="btn-back-to-search" class="btn btn-secondary btn-back-search" type="button" onclick="closeFormToSearch()">← Back to Search</button>
-          </div>
-        </div>
-
         <div class="form-tab-nav" role="tablist" aria-label="Assessment sections">
           <button class="form-tab-btn active" role="tab" aria-selected="true" data-tab="tab-loc" type="button" onclick="handleTabSwitch('tab-loc', this)">1. Context &amp; Localization</button>
           <button class="form-tab-btn" role="tab" aria-selected="false" data-tab="tab-env" type="button" onclick="handleTabSwitch('tab-env', this)">2. Environmental Baseline</button>
@@ -167,20 +172,24 @@
                   <input type="text" class="form-control fld-derived" id="pct-version" name="ASSESSMENT_VERSION" value="Ver 1 (Current)" readonly>
                 </div>
                 <div class="form-group col-span-3">
-                  <label class="form-label" for="pct-date">Assessment Date</label>
-                  <input type="text" class="form-control fld-derived" id="pct-date" name="ASSESSMENT_DATE" value="2026-10-10" readonly>
+                  <label class="form-label" for="pct-asmt-date">Assessment Date</label>
+                  <input type="text" class="form-control fld-derived" id="pct-asmt-date" name="ASSESSMENT_DATE" value="Pending Assessment" readonly>
                 </div>
                 <div class="form-group col-span-3">
                   <label class="form-label" for="pct-status">Assessment Status</label>
                   <input type="text" class="form-control fld-derived" id="pct-status" name="ASSESSMENT_STATUS" value="DRAFT (Under Preparation)" readonly>
                 </div>
                 <div class="form-group col-span-3">
-                  <label class="form-label" for="pct-fresh">Data Freshness</label>
-                  <input type="text" class="form-control fld-derived" id="pct-fresh" name="DATA_FRESHNESS_STATUS" value="CURRENT" readonly>
+                  <label class="form-label" for="pct-freshness">Data Freshness</label>
+                  <input type="text" class="form-control fld-derived" id="pct-freshness" name="DATA_FRESHNESS_STATUS" value="Pending Assessment" readonly>
                 </div>
                 <div class="form-group col-span-3">
                   <label class="form-label" for="pct-review">Annual Review Due</label>
-                  <input type="text" class="form-control fld-derived" id="pct-review" name="NEXT_REVIEW_DATE" value="2027-10-10" readonly>
+                  <input type="text" class="form-control fld-derived" id="pct-review" name="NEXT_REVIEW_DATE" value="Pending Assessment" readonly>
+                </div>
+                <div class="form-group col-span-3">
+                  <label class="form-label" for="pct-approved-date">Approval Date</label>
+                  <input type="text" class="form-control fld-derived" id="pct-approved-date" name="APPROVED_DATE" value="Pending Approval" readonly>
                 </div>
 
                 <div class="form-group col-span-4">
@@ -228,9 +237,13 @@
                 </div>
 
                 <div class="form-group col-span-6">
-                  <label class="form-label" for="fld-coastal">Coastal Zone Location</label>
-                  <input type="text" class="form-control fld-derived" id="fld-coastal" name="IS_COASTAL_ZONE" value="Y (Within CRZ Buffer - GIS Derived)" readonly>
-                  <span class="field-hint">Automated GIS spatial determination</span>
+                  <label class="form-label" for="fld-coastal-zone">Coastal Zone Location</label>
+                  <select class="form-control fld-optional mark-dirty" id="fld-coastal-zone" name="IS_COASTAL_ZONE" data-is-gis-derived="N">
+                    <option value="">-- Select Option --</option>
+                    <option value="NON_COASTAL">Non-Coastal Area</option>
+                    <option value="CRZ_I">CRZ-I / Buffer Zone</option>
+                    <option value="CRZ_II">CRZ-II / Urban Coastal</option>
+                  </select>
                 </div>
 
                 <div class="form-group col-span-6">
@@ -372,8 +385,13 @@
                 </div>
 
                 <div class="form-group col-span-4">
-                  <label class="form-label" for="fld-heat">Extreme Heat &amp; Wet-Bulb Stress</label>
-                  <input type="text" class="form-control fld-derived" id="fld-heat" value="MEDIUM (Thermal Anomaly Index 1.8°C)" readonly>
+                  <label class="form-label" for="fld-extreme-heat">Extreme Heat &amp; Wet-Bulb Stress</label>
+                  <select class="form-control fld-optional mark-dirty" id="fld-extreme-heat" name="EXTREME_HEAT_STRESS" data-is-gis-derived="N">
+                    <option value="">-- Select Option --</option>
+                    <option value="LOW">Low Exposure</option>
+                    <option value="MODERATE">Moderate Exposure</option>
+                    <option value="HIGH">High Exposure</option>
+                  </select>
                 </div>
 
                 <div class="form-group col-span-4">
@@ -530,7 +548,7 @@
         <!-- Section 6: ESG Assessment Summary (read-only; derived from the record's pillar scores, not editable) -->
         <div id="prop-tab-sec-6" class="tab-panel tab-body" role="tabpanel">
           <div class="score-validation-actions">
-            <p class="js-score-alert score-alert" role="alert" hidden>Assessment inputs have unsaved changes. Save or sign off the edited section, then reopen this summary to refresh the ESG rating.</p>
+            <p class="js-score-alert score-alert" role="alert" hidden>This preview includes unsaved Property inputs. Save or sign off the edited section to retain them; preview calculations do not approve or submit the valuation.</p>
             <span class="js-score-status" role="status">Preview only</span>
           </div>
           <div class="card" id="prop-sum-pending" hidden>
@@ -706,16 +724,6 @@
 
       <!-- VIEW 3: Manufacturing Plant Assessment Form (CORE_MFG) -->
       <section id="view-mfg-form" hidden>
-
-        <div class="card banner-card">
-          <div class="card-body banner-body">
-            <div>
-              <strong class="banner-name" id="mfg-banner-name"></strong>
-              <span class="breadcrumb-tag" id="mfg-banner-id"></span>
-            </div>
-            <button id="mfg-back-to-search" class="btn btn-secondary btn-back-search" type="button" onclick="closeMfgFormToSearch()">← Back to Search</button>
-          </div>
-        </div>
 
         <div class="form-tab-nav" role="tablist" aria-label="Manufacturing assessment sections">
           <button class="form-tab-btn active" role="tab" aria-selected="true" data-mfg-tab="mfg-tab-sec-1" type="button" onclick="handleTabSwitch('mfg-tab-sec-1', this)">1. Facility &amp; Siting</button>
@@ -1051,16 +1059,6 @@
       </section>
       <!-- VIEW 4: Vehicle Assessment Form (FRM_VEH) -->
       <section id="view-veh-form" hidden>
-
-        <div class="card banner-card" style="border-left-color: #f59e0b;">
-          <div class="card-body banner-body">
-            <div>
-              <strong class="banner-name" id="veh-banner-name"></strong>
-              <span class="breadcrumb-tag" id="veh-banner-id"></span>
-            </div>
-            <button id="veh-back-to-search" class="btn btn-secondary btn-back-search" type="button" onclick="closeVehicleFormToSearch()">← Back to Search</button>
-          </div>
-        </div>
 
         <div class="form-tab-nav" role="tablist" aria-label="Vehicle assessment sections">
           <button class="form-tab-btn active" role="tab" aria-selected="true" data-veh-tab="veh-tab-ident" type="button" onclick="handleTabSwitch('veh-tab-ident', this)">1. Identification &amp; Baseline</button>

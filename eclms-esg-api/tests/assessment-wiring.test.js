@@ -131,6 +131,119 @@ test("Property NEW summary is available before section sign-off", async () => {
   assert.equal(elements.get("prop-sum-pending").hidden, true);
 });
 
+test("Property summary caches clean visits and recalculates unsaved edits without clearing draft guards", async () => {
+  const { ctx } = propertyFrontend();
+  const field = { name: "BUILTUP_AREA_SQFT", value: "1000" };
+  ctx.document.querySelectorAll = () => [field];
+  ctx.result = response("PROP", "COL-2026-DEL-1090");
+  vm.runInContext(`
+    globalThis.calls = [];
+    requestAssessment = async (payload, action = "calculate-score") => { calls.push({payload, action}); return result; };
+  `, ctx);
+  await vm.runInContext("renderPropSummary();", ctx);
+  const lookups = [];
+  ctx.fetchCollateral = async (id) => {
+    lookups.push(id);
+    return { coll_id: id, name: "Live property", coll_type: "PROP" };
+  };
+  await vm.runInContext("renderPropSummary()", ctx);
+  assert.equal(ctx.calls.length, 1);
+  assert.equal(lookups.length, 0, "A clean cached visit must make no API calls");
+  field.value = "2000";
+  vm.runInContext('markSectionDirty("tab-env")', ctx);
+  assert.equal(vm.runInContext("isAssessmentDirty", ctx), true);
+  await vm.runInContext("renderPropSummary()", ctx);
+  assert.equal(ctx.calls.length, 2);
+  assert.equal(ctx.calls[1].action, "calculate-score");
+  assert.equal(ctx.calls[1].payload.form_attributes.BUILTUP_AREA_SQFT, "2000");
+  assert.equal(vm.runInContext("isAssessmentDirty", ctx), false);
+  assert.equal(vm.runInContext("hasUnsavedChanges()", ctx), true);
+  assert.equal(vm.runInContext("isFormDirty", ctx), true);
+  await vm.runInContext("renderPropSummary()", ctx);
+  assert.equal(ctx.calls.length, 2);
+});
+
+test("failed or stale Property calculations cannot clear the screen-level dirty flag", async () => {
+  const { ctx } = propertyFrontend();
+  vm.runInContext(`
+    isAssessmentDirty = true;
+    requestAssessment = async () => { throw new Error("offline"); };
+  `, ctx);
+  await vm.runInContext("renderPropSummary()", ctx);
+  assert.equal(vm.runInContext("isAssessmentDirty", ctx), true);
+  ctx.result = response("PROP", "COL-2026-DEL-1090");
+  vm.runInContext('requestAssessment = () => new Promise(resolve => { globalThis.finishScore = resolve; });', ctx);
+  const pending = vm.runInContext("renderPropSummary()", ctx);
+  await new Promise(setImmediate);
+  vm.runInContext('markSectionDirty("tab-env"); finishScore(result)', ctx);
+  await pending;
+  assert.equal(vm.runInContext("isAssessmentDirty", ctx), true);
+  assert.equal(vm.runInContext("propertySummaryCache", ctx), null);
+});
+
+test("Property cache is invalidated on cancel and cleared across selections; other forms do not dirty it", () => {
+  for (const type of ["prop", "mfg", "veh"]) {
+    const { ctx, config } = workflowFrontend(type);
+    vm.runInContext(`markSectionDirty("${config.signoff[0]}")`, ctx);
+    assert.equal(vm.runInContext("isAssessmentDirty", ctx), type === "prop");
+    vm.runInContext("isAssessmentDirty = false; cancelActiveTabChanges()", ctx);
+    assert.equal(vm.runInContext("isAssessmentDirty", ctx), type === "prop");
+    vm.runInContext('propertySummaryCache = {collateralId: activeCollateralId}; clearActiveAssessment()', ctx);
+    assert.equal(vm.runInContext("propertySummaryCache", ctx), null);
+    assert.equal(vm.runInContext("isAssessmentDirty", ctx), false);
+  }
+});
+
+test("Property input tracking does not depend on a mark-dirty class", () => {
+  const listeners = new Map();
+  const ctx = frontend({ document: { addEventListener: (name, handler) => listeners.set(name, handler) } });
+  vm.runInContext("activeCtx = () => FORM_CONTEXTS.prop; setDraftStatus = refreshSignOffUI = () => {};", ctx);
+  for (const eventName of ["input", "change"]) {
+    vm.runInContext("isAssessmentDirty = false", ctx);
+    listeners.get(eventName)({ target: {
+      tagName: "SELECT", disabled: false, readOnly: false,
+      closest: () => ({ id: "tab-cli" }), classList: { contains: () => false }
+    } });
+    assert.equal(vm.runInContext("isAssessmentDirty", ctx), true);
+  }
+});
+
+test("Property freshness boundaries agree between browser and API", async () => {
+  const now = Date.now();
+  const ctx = frontend();
+  for (const [days, expected] of [[0, "CURRENT"], [334, "CURRENT"], [335, "DUE_SOON"], [364, "DUE_SOON"], [365, "DUE_SOON"], [366, "OVERDUE"]]) {
+    const date = new Date(now - days * 86400000).toISOString();
+    ctx.date = date;
+    ctx.now = now;
+    assert.equal(vm.runInContext("propertyFreshness(date, now)", ctx), expected);
+    const route = draftRouteHarness({ query: async () => ({ rows: [{
+      coll_id: "TEST", coll_type: "PROP", form_attributes: {}, signed_sections: [],
+      assessment_ref: "ESG-26-0000001", assessment_date: date, approved_at: null
+    }] }) });
+    const { result } = await route("GET", "/draft/:collId", { params: { collId: "TEST" } });
+    assert.equal(result.data_freshness_status, expected);
+  }
+  assert.equal(vm.runInContext("propertyFreshness(null)", ctx), "Pending Assessment");
+  assert.throws(() => vm.runInContext('propertyFreshness("invalid")', ctx), /Invalid Property assessment date/);
+});
+
+test("Property lifecycle displays public IDs and keeps the original approval date through later edits", () => {
+  const { ctx, node } = workflowFrontend("prop");
+  ctx.lifecycle = {
+    assessment_ref: "ESG-26-0000001", assessment_date: "2026-01-01T00:00:00Z",
+    approved_at: "2026-01-02T01:02:03Z", signed_sections: []
+  };
+  vm.runInContext("applyPropertyLifecycle({})", ctx);
+  assert.equal(node("pct-approved-date").value, "Pending Approval");
+  vm.runInContext("applyPropertyLifecycle(lifecycle)", ctx);
+  assert.equal(node("pct-asmt-id").value, "ESG-26-0000001");
+  assert.equal(node("pct-status").value, "DRAFT");
+  assert.equal(node("pct-approved-date").value, "2026-01-02T01:02:03.000Z");
+  vm.runInContext('markSectionDirty("tab-loc"); cancelActiveTabChanges()', ctx);
+  assert.equal(node("pct-asmt-id").value, "ESG-26-0000001");
+  assert.equal(node("pct-approved-date").value, "2026-01-02T01:02:03.000Z");
+});
+
 test("Property offline mode displays unavailable without fabricated fallback scores", async () => {
   const { ctx, elements } = propertyFrontend();
   vm.runInContext('requestAssessment = async () => { throw new Error("offline"); };', ctx);
@@ -738,7 +851,7 @@ test("preview and submission routes use distinct persistence contracts and rejec
     }
   });
   vm.runInContext(fs.readFileSync(path.join(__dirname, "../routes/assessment-routes.js"), "utf8"), context);
-  context.module.exports({});
+  context.module.exports({ query: async () => ({ rows: [] }) });
   const invoke = async (path, body) => {
     let result, status, failure;
     await handlers.get(path)({ body }, { status: (code) => { status = code; return { json: (value) => { result = value; } }; } }, (error) => { failure = error; });
@@ -853,6 +966,48 @@ test("markup removes summary/header actions, places drafts in bottom bars, and h
   }
 });
 
+test("collateral identity, template tags and Back dock in the primary header; section actions stay below", () => {
+  const html = fs.readFileSync(path.join(__dirname, "../../eclms-esg-web/index.html"), "utf8");
+  const header = html.match(/<header class="top-bar">([\s\S]*?)<\/header>/)[1];
+  for (const id of ["banner-prop-name", "banner-coll-id", "mfg-banner-name", "mfg-banner-id", "veh-banner-name", "veh-banner-id", "btn-back-to-search"]) {
+    assert.match(header, new RegExp(`id="${id}"`));
+    assert.equal([...html.matchAll(new RegExp(`id="${id}"`, "g"))].length, 1);
+  }
+  assert.match(header, /FRM_PROP/);
+  assert.match(header, /CORE_MFG/);
+  assert.match(header, /FRM_VEH/);
+  assert.match(header, /System Maker/);
+  assert.match(header, /Auth Model: MA_CH/);
+  assert.doesNotMatch(header, /js-save-draft-btn|js-signoff-btn|js-cancel-btn/);
+  assert.doesNotMatch(html, /class="[^"]*banner-card/);
+  for (const type of ["prop", "mfg", "veh"]) {
+    const { ctx, config, node } = workflowFrontend(type);
+    vm.runInContext("setAssessmentHeader(activeCtx())", ctx);
+    assert.equal(node(`${type}-header-identity`).hidden, false);
+    assert.equal(node("header-assessment-title").hidden, true);
+    assert.equal(node("top-bar-actions").hidden, false);
+    assert.equal(node(config.barId).hidden, false);
+    vm.runInContext("setAssessmentHeader(null)", ctx);
+    assert.equal(node("header-assessment-title").hidden, false);
+    assert.equal(node("top-bar-actions").hidden, true);
+  }
+});
+
+test("Property coastal and heat controls are manual dropdowns with exact option codes", () => {
+  const html = fs.readFileSync(path.join(__dirname, "../../eclms-esg-web/index.html"), "utf8");
+  for (const [id, codes] of [
+    ["fld-coastal-zone", ["", "NON_COASTAL", "CRZ_I", "CRZ_II"]],
+    ["fld-extreme-heat", ["", "LOW", "MODERATE", "HIGH"]]
+  ]) {
+    const select = html.match(new RegExp(`<select[^>]*id="${id}"[^>]*>([\\s\\S]*?)</select>`));
+    assert.ok(select);
+    assert.doesNotMatch(select[0], /\bdisabled\b|\breadonly\b/);
+    assert.match(select[0], /mark-dirty/);
+    assert.match(select[0], /data-is-gis-derived="N"/);
+    assert.deepEqual([...select[1].matchAll(/value="([^"]*)"/g)].map((match) => match[1]), codes);
+  }
+});
+
 function draftRouteHarness(pool, collateralRoutes = false) {
   const handlers = new Map();
   const context = vm.createContext({
@@ -941,6 +1096,9 @@ test("draft routes return empty/matching snapshots and upsert JSONB by collatera
   const pool = { query: async (sql, params) => {
     if (["BEGIN", "COMMIT", "ROLLBACK"].includes(sql)) return {};
     if (sql.includes("FROM coll_master")) return { rows: [{ coll_id: "DRAFT-1", coll_type: "PROP" }] };
+    if (sql.startsWith("UPDATE esg_collateral_draft_payload")) {
+      return { rows: [{ assessment_ref: "ESG-26-0000001", assessment_date: "2026-10-13T00:00:00Z", approved_at: null }] };
+    }
     if (sql.startsWith("SELECT")) {
       assert.match(sql, /WHERE coll_id = \$1/);
       assert.equal(params[0], "DRAFT-1");
@@ -963,6 +1121,40 @@ test("draft routes return empty/matching snapshots and upsert JSONB by collatera
     assert.equal(read.result.form_attributes.FIELD, value);
     assert.deepEqual(read.result.signed_sections, ["tab-loc"]);
   }
+});
+
+test("Property draft lifecycle is server-owned and approval requires all sections plus MA", async () => {
+  const gates = [];
+  let attributes;
+  const sections = ["tab-loc", "tab-env", "tab-cli", "tab-res", "tab-cso"];
+  const pool = {
+    release() {},
+    query: async (sql, params) => {
+      if (["BEGIN", "COMMIT", "ROLLBACK"].includes(sql)) return {};
+      if (sql.includes("FROM coll_master")) return { rows: [{ coll_id: "TEST", coll_type: "PROP" }] };
+      if (sql.startsWith("INSERT INTO")) {
+        attributes = JSON.parse(params[2]);
+        return { rows: [{ coll_id: "TEST", form_attributes: attributes, signed_sections: JSON.parse(params[3]) }] };
+      }
+      assert.match(sql, /assessment_ref = COALESCE\(assessment_ref,/);
+      assert.match(sql, /LPAD\(nextval\('esg_asmt_seq'\)::text, 7, '0'\)/);
+      assert.match(sql, /COALESCE\(approved_at, CURRENT_TIMESTAMP\) ELSE approved_at END/);
+      gates.push(params[1]);
+      return { rows: [{ assessment_ref: "ESG-26-0000042", assessment_date: "2026-01-01T00:00:00Z", approved_at: null }] };
+    }
+  };
+  pool.connect = async () => pool;
+  const route = draftRouteHarness(pool);
+  for (const [signed_sections, authority] of [[[], "MA"], [sections, undefined], [sections, "MA"], [["tab-loc"], "MA"]]) {
+    const { result, error } = await route("POST", "/draft", { body: {
+      coll_id: "TEST", coll_type: "PROP", signed_sections, authority,
+      form_attributes: { ASSESSMENT_ID: "spoofed", APPROVED_DATE: "1900-01-01", FIELD: "retained" }
+    } });
+    assert.equal(error, undefined);
+    assert.equal(result.assessment_ref, "ESG-26-0000042");
+    assert.deepEqual(attributes, { FIELD: "retained" });
+  }
+  assert.deepEqual(gates, [false, false, true, false]);
 });
 
 test("draft routes reject malformed sections, wrong types and SQL failures explicitly", async () => {

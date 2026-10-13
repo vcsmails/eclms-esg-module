@@ -14,7 +14,7 @@ The Assessment Scoring Execution Pipeline orchestrates the complete ESG assessme
 
 ## Property, Manufacturing and Vehicle frontend integration
 
-- Opening Property Section 6, Manufacturing Section 10 or Vehicle Section 6 calls
+- Opening Property Section 6 (when dirty or uncached), Manufacturing Section 10 or Vehicle Section 6 calls
   `POST /api/assessment/calculate-score` with `coll_type: "PROP"`, `"MANU"` or `"VEH"`.
   The payload uses the existing `form_attributes` contract (no `answers` alias).
   Attributes include saved draft values, unchanged EDIT fields and derived values
@@ -44,13 +44,20 @@ The Assessment Scoring Execution Pipeline orchestrates the complete ESG assessme
   `policy_haircut_pct` and the same `form_attributes`. Inputs and navigation are
   locked while submitting. Failed requests retain the draft for retry by
   reopening the summary. Concurrent renders share one in-flight submission.
-  Completed responses are not cached; reopening fetches and calculates afresh.
+  Manufacturing and Vehicle responses are not cached. Property retains only
+  the open assessment's latest successful summary: clean revisits make no API
+  calls. Changes in Property Tabs 1-5 set `isAssessmentDirty`; the next summary
+  visit recalculates and clears that flag only after a successful, current response.
+  Cancel also invalidates the preview, and leaving/selecting another collateral
+  clears it. Failed or late responses never clear the dirty flag.
 - Summary failures (including a 30-second request timeout or malformed response)
   display **Unavailable**, never fabricated/local scores or cached approvals.
   Late responses cannot overwrite another collateral's visible summary.
-- Summary tabs are always viewable. Unsaved inputs show an alert and do not
-  trigger a new preview request. Saved but unsigned inputs can be previewed,
-  but cannot be submitted. Leaving with unsaved changes prompts:
+- Summary tabs are always viewable. Property may calculate unsaved inputs as a
+  preview, with an explicit unsaved-data alert; this never saves inputs, signs
+  sections or submits a valuation. Manufacturing and Vehicle retain their
+  existing unsaved-input scoring guard. Saved but unsigned inputs can be
+  previewed, but cannot be submitted. Leaving with unsaved changes prompts:
   **Data changes are not saved and will be lost. Exit anyway?**
 - The Express calculate route now returns `CALCULATED` without writing a ledger
   row. Submit re-scores server-side and transactionally inserts an immutable
@@ -66,25 +73,55 @@ The Assessment Scoring Execution Pipeline orchestrates the complete ESG assessme
   sidebar scopes constrain the collateral type and searches reset to page 1.
   Selection always fetches `GET /api/collateral/:collId`, which returns 404 for
   an absent ID. Bindings use `coll_id`; no local collateral datasets or
-  per-collateral caches remain.
+  reusable per-collateral record caches remain. The Property-only summary cache
+  does not cache registry records or survive selection changes.
 - The current master has no original appraisal column. The UI displays live
   scores and the stored `esg_post_haircut_val` (labelled **stored**), but blocks
   new valuation submission until an authoritative original appraisal is supplied.
   It never substitutes zero or reconstructs an appraisal from the adjusted value.
 - Opening any form clears prototype/previous inputs and hydrates
   `GET /api/assessment/draft/:collId`. Save Draft and Sign Off use
-  `POST /api/assessment/draft`; approval uses `/api/assessment/submit`.
+  `POST /api/assessment/draft`; valuation submission uses `/api/assessment/submit`.
   No collateral records or drafts are read/written through localStorage or
   sessionStorage. Only the open form's transient snapshots are held for Cancel
   and dirty guards; these are cleared on exit or selection. Before-unload draft
   saving also uses the REST endpoint. VAHAN no longer fabricates vehicle data;
   it reports that its integration is unavailable.
+- All three forms use a consolidated primary header containing collateral
+  type/ID/name, the template tag and Back to Search. User identity
+  (`System Maker | Auth Model: MA_CH`) occupies the right-hand side; the effective
+  workflow authority remains MA. The secondary banners are removed, and section
+  tabs dock immediately below the primary header. Save Draft, Cancel Changes and
+  Sign Off remain in the bottom action bars.
 - Serve the frontend through the Express app (`http://localhost:3000/index.html`),
-  not `file://`. Stable form/summary IDs are retained. Debug metadata and
-  template badges are hidden/removed; all form navbar titles use
-  **Sustainability Assessment**. The Annual Environmental Ledger add action is disabled.
-  Back-to-search controls use at least 38px height. Property Assessment Type
-  is removed from both the UI and outgoing payloads.
+  not `file://`. Debug metadata stays hidden; the Annual Environmental Ledger
+  add action stays disabled. Back-to-search controls use at least 38px height.
+  Property Assessment Type is removed from both the UI and outgoing payloads.
+
+### Property ID, dates and freshness
+
+Apply `db/migrations/032-property-assessment-lifecycle.sql` before running the
+updated API. The first successful Property draft save allocates `assessment_ref`
+from PostgreSQL `esg_asmt_seq`, formatted `ESG-YY-0000001` (for example,
+`ESG-26-0000001`). The counter does not reset each year; allocation stops at
+9,999,999 rather than truncating or cycling. Updates reuse the existing reference.
+Internal ledger UUID keys and Manufacturing/Vehicle persistence remain unchanged.
+Legacy Property drafts acquire their reference on their next successful save.
+
+`assessment_date` is the server timestamp of the first draft save. The API returns
+the reference, assessment date, `approved_at` and `data_freshness_status`; the UI
+binds these to `pct-asmt-id`, `pct-asmt-date`, `pct-approved-date` and
+`pct-freshness`. The first MA draft save with all five Property sections signed
+off records `approved_at`, independently of valuation submission. It remains
+Pending Approval until then. Per the current rule, later edits and re-sign-offs
+preserve that original approval timestamp, even if the current section state
+returns to DRAFT. Future approval-freeze/versioning rules are not implemented.
+These server-owned fields cannot be overridden by supplied form attributes.
+
+Freshness uses completed elapsed days since `assessment_date`: CURRENT below
+335 days, DUE_SOON from 335 through 365 inclusive, OVERDUE above 365 days.
+Missing assessment dates display Pending Assessment. The review due date is
+365 days after the assessment date.
 
 Focused regression checks: `cd eclms-esg-api && npm test`
 and `node --check eclms-esg-web/js/esg-navigation.js` from the repository root.
@@ -105,6 +142,10 @@ An empty climate zone defaults to `TEMPERATE` when coordinates are present;
 an explicitly empty/null saved `CLIM_ZONE` also hydrates as `TEMPERATE`.
 Coordinate format validation still applies at sign-off.
 This controls editability; it does not introduce a live GIS lookup service.
+Coastal Zone Location (`IS_COASTAL_ZONE`) and Extreme Heat/Wet-Bulb Stress
+(`EXTREME_HEAT_STRESS`) are manual, optional dropdowns unaffected by GIS locking.
+Their respective codes are `NON_COASTAL`/`CRZ_I`/`CRZ_II` and
+`LOW`/`MODERATE`/`HIGH`; legacy unsupported values require reselection.
 
 PROP section weights use `TAB_ENV`, `TAB_LOC` and `SEC_SOC_GOV`. `SEC_SOC_GOV` has no rubric rules yet,
 so it contributes 0 until rules are added.
